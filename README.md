@@ -2,7 +2,7 @@
 
 "We do what we must because we can." — Aperture Science
 
-Welcome, test subject. You have chosen (or been chosen) to use the GLaDOS Game Launcher. Why? That is a question only you can answer. Rest assured, your games will be managed with the utmost sarcasm and passive-aggressive supervision.
+Welcome, test subject. You have chosen (or been chosen) to use the Aperture Game Launcher. Why? That is a question only you can answer. Rest assured, your games will be managed with the utmost sarcasm and passive-aggressive supervision.
 
 ---
 
@@ -42,7 +42,7 @@ A: Because life is full of disappointment. And so is your setup
 and possbily WHEATLEY broke it.
 
 **Q: Is GLaDOS judging me?**
-A: Yes. Constantly.
+A: Yes. I am Constantly.
 
 **Q: Can I contribute?**
 A: Fork, clone, and submit a pull request. I’ll pretend to care.
