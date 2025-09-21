@@ -6,7 +6,7 @@ A Portal-themed launcher with GLaDOS personality, Aperture branding, and plenty 
 
 ✨ Features
 
-GLaDOS AI — Snide commentary included.
+"GLaDOS AI" — Snide commentary included.
 
 Multi-Platform — Steam, Epic*, GOG*, Ubisoft Connect.
 
