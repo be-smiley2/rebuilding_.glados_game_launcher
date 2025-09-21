@@ -38,8 +38,8 @@ Welcome, test subject. You have chosen (or been chosen) to use the GLaDOS Game L
 ## ❓ FAQ (Frequently Annoying Questions)
 
 **Q: Why doesn’t Epic/GOG work?**
-A: Because life is full of disappointment. And so is your setup.
-
+A: Because life is full of disappointment. And so is your setup
+and possbily WHEATLEY broke it.
 **Q: Is GLaDOS judging me?**
 A: Yes. Constantly.
 
