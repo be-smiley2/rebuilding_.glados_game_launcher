@@ -14,7 +14,7 @@ Game Manager — Add, edit, and organize (badly).
 
 Aperture Theming — Test-subject chic.
 
-Auto-Setup — Even you can’t mess this up. Probably.
+easy-Setup — Even you can’t mess this up. Probably.
 
 🔧 Requirements
 
