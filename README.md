@@ -8,7 +8,7 @@ Welcome, test subject. You have chosen (or been chosen) to use the Aperture Game
 
 ## 🧪 Features (Because You Clearly Need Help)
 
-- **GLaDOS Personality**: Enjoy snide remarks and questionable encouragement as you launch your games. You’re welcome.
+- **my Personality**: Enjoy snide remarks and questionable encouragement as you launch your games. You’re welcome.
 - **Multi-Platform Support**: Steam, Epic*, GOG*, Ubisoft Connect. (*If it doesn’t work, it’s WHEATLEY fault, not mine.)
 - **Game Management**: Add, edit, and organize your games. Or don’t. I’ll judge you either way which may break or crash into walls (yes WHEATLEY i know about the last time you was a supervisor so do try to not break anything)
 - **Aperture Science Theming**: Because black and white is the new black.
