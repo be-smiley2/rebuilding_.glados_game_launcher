@@ -1,0 +1,32 @@
+████████████████████████████████████████████████████████████████████████████████
+                     APERTURE SCIENCE GAME CATALOG
+                          VERSION: 2.1 "still avile"
+████████████████████████████████████████████████████████████████████████████████
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                 GLaDOS ENTERTAINMENT DISTRIBUTION CATALOG                     ║
+║                                                                                ║
+║  GAMES ADDED: 0                                                               ║
+║  STATUS: AWAITING USER INPUT                                                  ║
+║  EXPECTED DISAPPOINTMENT LEVEL: MAXIMUM                                       ║
+║                                                                                ║
+║  "The catalog is currently empty. How... predictable."                       ║
+║  "Please add some games so I can properly judge your terrible taste."        ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+The catalog is currently empty. Please use the integrated game management system
+to add your games. Each addition will be catalogued with appropriate scientific
+commentary regarding your inevitable failure scenarios.
+
+This message will be replaced with your personalized catalog of disappointment
+once you actually add some games to your collection.
+
+═══════════════════════════════════════════════════════════════════════════════════
+                                  END CATALOG
+                              
+Current collection status: Empty (as expected)
+Game selection range: None available
+
+"Remember: Even an empty catalog is more organized than your gaming skills."
+                                                                    - GLaDOS
+═══════════════════════════════════════════════════════════════════════════════════

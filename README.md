@@ -1,32 +1,51 @@
-🤖 GLaDOS Game Launcher
+🤖 **GLaDOS Game Launcher**
 
 "We do what we must because we can." — Aperture Science
 
-A Portal-themed launcher with GLaDOS personality, Aperture branding, and plenty of sarcasm. Manage and play your games… under "constant supervision".
+Welcome, test subject. You have chosen (or been chosen) to use the GLaDOS Game Launcher. Why? That is a question only you can answer. Rest assured, your games will be managed with the utmost sarcasm and passive-aggressive supervision.
 
-✨ Features
+---
 
-"GLaDOS AI" — Snide commentary included.
+## 🧪 Features (Because You Clearly Need Help)
 
-Multi-Platform — Steam, Epic*, GOG*, Ubisoft Connect.
+- **GLaDOS Personality**: Enjoy snide remarks and questionable encouragement as you launch your games. You’re welcome.
+- **Multi-Platform Support**: Steam, Epic*, GOG*, Ubisoft Connect. (*If it doesn’t work, it’s your fault, not mine.)
+- **Game Management**: Add, edit, and organize your games. Or don’t. I’ll judge you either way.
+- **Aperture Science Theming**: Because black and white is the new black.
+- **Easy Setup**: Even a test subject can do it. Probably.
 
-*may not work at the monent
+---
 
-Game Manager — Add, edit, and organize (badly).
+## 🛠️ Requirements (You Can Read, Right?)
 
-Aperture Theming — Test-subject chic.
+- Python 3.6 or newer (if you’re using something older, please return to the 20th century)
+- `requests` (will be installed automatically, unless you sabotage it)
 
-easy-Setup* — Even you can’t mess this up. Probably.
+---
 
-*how to set-up in the releases 
+## � Setup Instructions (Try Not to Mess This Up)
 
-🔧 Requirements
+1. Download the latest release from the [Releases](#) page. (If you can’t find it, that’s not my problem.)
+2. Extract the files somewhere you’ll forget about later.
+3. Run the launcher with Python:
+	```sh
+	python GLaDOS_games_launcher.py
+	```
+4. Follow the on-screen instructions. Or don’t. I’ll still be here.
 
-Python 3.6+
+---
 
-requests (auto-installed)
+## ❓ FAQ (Frequently Annoying Questions)
 
+**Q: Why doesn’t Epic/GOG work?**
+A: Because life is full of disappointment. And so is your setup.
 
+**Q: Is GLaDOS judging me?**
+A: Yes. Constantly.
 
-*This was a triumph. 
-I'm making a note here: HUGE SUCCESS.*
+**Q: Can I contribute?**
+A: Fork, clone, and submit a pull request. I’ll pretend to care.
+
+---
+
+*This was a triumph. I’m making a note here: HUGE SUCCESS. For science.*
