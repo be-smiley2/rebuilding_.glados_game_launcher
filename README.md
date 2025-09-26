@@ -44,6 +44,7 @@ A: Because disappointment builds character. Yours, specifically.
 
 **Q: Is GLaDOS judging me?**
 A: Yes.I am Constantly. 
+
 **Q: Can I contribute?**
 A: Fork, clone, and submit a pull request. I’ll graciously ignore your effort while secretly incorporating it.
 
