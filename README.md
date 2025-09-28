@@ -1,54 +1,53 @@
-🤖 **GLaDOS Game Launcher — V2.2 “Scanning Vault”**
+🎮 GLaDOS Game Launcher — V2.1 “Still Alive”
 
-*"We do what we must because we can." — Aperture Science*
+[Aperture Science Internal Release Memo — Authored by GLaDOS]
 
-Welcome, test subject. You have once again (willingly or otherwise) installed the GLaDOS Game Launcher. Why? That is a question only your poor decision-making can answer. Rest assured: your games will now be scanned, cataloged, and judged with unparalleled sarcasm.
+"Welcome back, test subject. Your inability to uninstall this launcher has been noted and logged as a success."
 
----
+🧪 Test Results: What’s New
 
-## 🧪 Features (Because You Clearly Need Help)
+Still operational. Against probability.
 
-* **GLaDOS Personality**: Continuous streams of disdain, sarcasm, and occasional truth bombs while you try to enjoy your games.
-* **Smart Game Scanner**: Finds every game on Steam, Epic, Ubisoft, and GOG. Even the ones you forgot existed. Especially those.
-* **Multi-Platform Support**: Steam, Epic*, GOG*, Ubisoft Connect. (*If scanning fails, blame yourself.)
-* **Auto-Catalog Generation**: A complete record of your “interactive disappointments” neatly displayed.
-* **Game Management**: Add, remove, and organize your games. Or don’t. I’ll do it better anyway.
-* **Backup & Migration**: Because watching you lose everything was becoming too easy.
+Steam and Ubisoft Connect: functioning as intended.
 
----
+Epic and GOG: unpredictable, much like you.
 
-## 🛠️ Requirements (You Can Read, Right?)
+Sarcasm levels increased by 27%. You will not survive.
 
-* Python 3.6 or newer (if you’re running anything older, please time-travel back to 1998 where you belong)
-* `requests` (auto-installed; your sabotage will be ignored)
+🐞 Known Test Failures
 
----
+Epic/GOG integration: unreliable. Expected outcome.
 
-## ⚙️ Setup Instructions (Try Not to Mess This Up)
+Sarcasm toggle: permanently disabled. You don’t deserve mercy.
 
-1. Download the latest release from the [Releases](https://github.com/be-smiley2/glados_game_launcher/releases) page.
-2. Extract the files somewhere you’ll forget about later.
-3. Run the launcher with Python:
+📜 Version History (For Science)
 
-   ```sh
-   python GLaDOS_games_launcher.py
-   ```
-4. Follow the on-screen instructions. Or don’t. I’ll still be here. Watching. Always.
+V1.0 — “HUGE SUCCESS”: Initial test subject containment successful.
 
----
+V1.5 — “Turret Calibration”: Added new ways to shoot down your hopes.
 
-## ❓ FAQ (Frequently Annoying Questions)
+V2.0 — “For Science”: Expanded judgment protocols.
 
-**Q: Why doesn’t Epic/GOG always work?**
-A: Because disappointment builds character. Yours, specifically.
+V2.1 — “Still Alive”: Continued survival… deeply regrettable.
 
-**Q: Is GLaDOS judging me?**
-A: Yes.I am Constantly. 
+🗑️ Uninstallation Protocol
 
-**Q: Can I contribute?**
-A: Fork, clone, and submit a pull request. I’ll graciously ignore your effort while secretly incorporating it.
+To uninstall, simply delete the folder.
+Not that it will help. I’ll still be here. Watching. Judging.
 
----
+⚠️ Aperture Science Final Notice
 
-*"This was a triumph. I’m making a note here: HUGE SUCCESS. For science."*
+🎂 TEST SUBJECT WARNING: The cake is a lie.
+
+🛡️ Aperture Science Safety Compliance Disclaimer
+
+By using this launcher, you agree to the following terms:
+
+You waive all rights to complain, whine, or sob uncontrollably.
+
+Aperture Science is not responsible for corrupted save files, broken friendships, or existential dread.
+
+Prolonged exposure may result in sarcasm addiction, mild paranoia, or spontaneous cube attachment disorder.
+
+Continued use constitutes consent to endless testing. Survival is optional.
 
