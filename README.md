@@ -2,13 +2,9 @@
 
 *Aperture Science — Now supporting all platforms equally poorly.*
 
-> **"Welcome back, test subject.  
-> Your inability to uninstall this launcher has been noted and logged as a success."*
-
+> **"Welcome back, test subject. 
 ---
-
 ## 📝 Overview
-
 The **GLaDOS Game Launcher** is your one-stop shop for all your gaming needs — Steam, Epic, Ubisoft, and GOG — because apparently alt-tabbing was unbearable.  
 Available in two equally unimpressive formats:
 
