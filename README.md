@@ -49,6 +49,7 @@ Either way, you lose.
 - Your mountain of unplayed games.  
 - Wheatley. (Always Wheatley.)  
 - Windows pretending it’s an operating system.
+- updating button not working (Wheatley)
 
 ---
 
