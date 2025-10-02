@@ -3,31 +3,46 @@ from __future__ import annotations
 
 
 class ApertureTheme:
-    PRIMARY_BG = "#000000"
-    SECONDARY_BG = "#050505"
-    PANEL_BG = "#0a0a0a"
-    ACCENT_BG = "#111111"
+    """Centralized Aperture Science colour palette and typography."""
 
-    GLADOS_ORANGE = "#ff6600"
-    WHEATLEY_BLUE = "#4488ff"
-    PORTAL_BLUE = "#00ccff"
-    PORTAL_ORANGE = "#ff8800"
+    # Core surfaces
+    PRIMARY_BG = "#0f171f"
+    SECONDARY_BG = "#141f2a"
+    PANEL_BG = "#182532"
+    ACCENT_BG = "#1f3040"
 
-    TEXT_PRIMARY = "#ff6600"
-    TEXT_SECONDARY = "#ffb366"
-    TEXT_ACCENT = "#ffaa00"
-    TEXT_MUTED = "#cc5500"
+    # Brand accents
+    GLADOS_ORANGE = "#ff9b42"
+    WHEATLEY_BLUE = "#4fc3f7"
+    PORTAL_BLUE = "#5ad1ff"
+    PORTAL_ORANGE = "#ffb76b"
 
-    SUCCESS_GREEN = "#44cc44"
-    ERROR_RED = "#ff4444"
-    WARNING_YELLOW = "#ffcc44"
+    # Text colours
+    TEXT_PRIMARY = "#f4f6f8"
+    TEXT_SECONDARY = "#c0ccd6"
+    TEXT_ACCENT = "#ffe4b5"
+    TEXT_MUTED = "#7f96aa"
 
-    BUTTON_NORMAL = "#404040"
-    BUTTON_HOVER = "#555555"
-    BUTTON_ACTIVE = "#666666"
+    # Status colours
+    SUCCESS_GREEN = "#5bd975"
+    ERROR_RED = "#ff6b6b"
+    WARNING_YELLOW = "#ffd166"
 
-    BORDER_LIGHT = "#555555"
-    BORDER_DARK = "#222222"
+    # Interactive states
+    BUTTON_NORMAL = "#223447"
+    BUTTON_HOVER = "#2f4c66"
+    BUTTON_ACTIVE = "#3a5f7d"
+
+    BORDER_LIGHT = "#3c5064"
+    BORDER_DARK = "#0b1118"
+
+    # Typography
+    FONT_FAMILY = "Arial"
+    FONT_BASE = (FONT_FAMILY, 10)
+    FONT_SMALL = (FONT_FAMILY, 9)
+    FONT_BUTTON = (FONT_FAMILY, 10, "bold")
+    FONT_SUBHEADING = (FONT_FAMILY, 12, "bold")
+    FONT_HEADING = (FONT_FAMILY, 17, "bold")
 
 
 __all__ = ["ApertureTheme"]
