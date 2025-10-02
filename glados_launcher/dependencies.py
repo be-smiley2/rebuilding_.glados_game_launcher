@@ -1,6 +1,7 @@
 """Compatibility helpers for optional platform-specific modules."""
 from __future__ import annotations
 
+import importlib.util
 import sys
 from types import SimpleNamespace
 
@@ -23,4 +24,6 @@ except ImportError:  # pragma: no cover - Windows only module
 
     winreg = _WinRegStub()  # type: ignore
 
-__all__ = ["winreg"]
+REQUESTS_AVAILABLE = importlib.util.find_spec("requests") is not None
+
+__all__ = ["winreg", "REQUESTS_AVAILABLE"]
