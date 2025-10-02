@@ -230,6 +230,7 @@ class ApertureEnrichmentCenterGUI:
             ("REMOVE ALL", self.remove_all_games),
             ("RATE", self.rate_selected_game),
             ("ACHIEVEMENTS", self.show_achievements),
+            ("MINI GAMES", self.show_mini_games),
             ("ANALYSIS", self.show_analysis),
             ("PREFS", self.show_preferences),
             ("UPDATE", lambda: self.check_for_updates()),
@@ -724,6 +725,98 @@ class ApertureEnrichmentCenterGUI:
         except Exception as exc:
             messagebox.showerror("Error", f"Achievement analysis error: {exc}")
 
+    def show_mini_games(self) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Aperture Mini-Games")
+        dialog.geometry("600x520")
+        dialog.configure(bg=ApertureTheme.PRIMARY_BG)
+        dialog.transient(self.root)
+
+        header_frame = ttk.Frame(dialog, style="Header.TFrame")
+        header_frame.pack(fill="x", padx=20, pady=20)
+
+        ttk.Label(header_frame, text="APERTURE MINI-GAMES", style="GLaDOS.TLabel").pack()
+        ttk.Label(
+            header_frame,
+            text="Complete experimental simulations to unlock custom achievements.",
+            style="Wheatley.TLabel",
+        ).pack(pady=(6, 0))
+
+        content_frame = ttk.Frame(dialog, style="Panel.TFrame")
+        content_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        stats = self.achievement_manager.get_mini_game_stats("train_tetris")
+        achievements = self.achievement_manager.get_mini_game_achievements("train_tetris")
+
+        stats_frame = ttk.Frame(content_frame, style="Panel.TFrame")
+        stats_frame.pack(fill="x", padx=15, pady=15)
+
+        total_minutes = stats.get("total_time", 0.0) / 60.0
+        last_played_ts = stats.get("last_played")
+        if last_played_ts:
+            last_played = time.strftime("%Y-%m-%d %H:%M", time.localtime(last_played_ts))
+        else:
+            last_played = "Never"
+
+        stats_lines = [
+            f"Simulation Sessions: {stats.get('sessions', 0)}",
+            f"Best Score: {stats.get('best_score', 0)}",
+            f"Total Lines Cleared: {stats.get('total_lines', 0)}",
+            f"Highest Level Achieved: {stats.get('highest_level', 1)}",
+            f"Lab Time Invested: {total_minutes:.1f} minutes",
+            f"Last Attempt: {last_played}",
+        ]
+
+        ttk.Label(stats_frame, text="TRAIN YARD SIMULATION STATS", style="GLaDOS.TLabel").pack(anchor="w")
+        for line in stats_lines:
+            ttk.Label(stats_frame, text=line, style="Aperture.TLabel").pack(anchor="w", pady=(4, 0))
+
+        ach_frame = ttk.Frame(content_frame, style="Panel.TFrame")
+        ach_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+
+        ttk.Label(ach_frame, text="ACHIEVEMENT PROTOCOLS", style="GLaDOS.TLabel").pack(anchor="w")
+
+        if achievements:
+            for achievement in achievements:
+                status = "✔" if achievement.get("earned") else "○"
+                text = f"{status} {achievement['name']}"
+                ttk.Label(ach_frame, text=text, style="Aperture.TLabel").pack(anchor="w", pady=(6, 0))
+                ttk.Label(
+                    ach_frame,
+                    text=f"    {achievement['description']}",
+                    style="Wheatley.TLabel" if achievement.get("earned") else "Aperture.TLabel",
+                ).pack(anchor="w")
+        else:
+            ttk.Label(
+                ach_frame,
+                text="No experimental achievements defined yet.",
+                style="Aperture.TLabel",
+            ).pack(anchor="w", pady=10)
+
+        button_frame = ttk.Frame(content_frame, style="Panel.TFrame")
+        button_frame.pack(fill="x", padx=15, pady=(0, 15))
+
+        def launch_tetris() -> None:
+            if dialog.winfo_exists():
+                dialog.destroy()
+            self.show_tetris()
+
+        ttk.Button(
+            button_frame,
+            text="Launch Train Yard Simulation",
+            style="GLaDOS.TButton",
+            command=launch_tetris,
+            width=28,
+        ).pack(side="left", padx=(0, 10))
+
+        ttk.Button(
+            button_frame,
+            text="Close",
+            style="Aperture.TButton",
+            command=dialog.destroy,
+            width=12,
+        ).pack(side="left")
+
     def show_achievement_summary(self) -> None:
         dialog = tk.Toplevel(self.root)
         dialog.title("Achievement Analysis")
@@ -1015,7 +1108,11 @@ class ApertureEnrichmentCenterGUI:
             self.tetris.focus()
             return
 
-        self.tetris = TrainTetrisGame(self.root, on_close=lambda: setattr(self, "tetris", None))
+        self.tetris = TrainTetrisGame(
+            self.root,
+            on_close=lambda: setattr(self, "tetris", None),
+            achievement_manager=self.achievement_manager,
+        )
 
     def check_for_updates(self) -> None:
         if self.update_check_in_progress:

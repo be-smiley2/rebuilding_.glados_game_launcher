@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import json
-from typing import Dict
+import time
+from typing import Dict, List
 
 from .config import ACHIEVEMENT_CACHE_DIR
 
@@ -13,6 +14,37 @@ class AchievementManager:
     def __init__(self) -> None:
         self.achievement_cache: Dict[str, Dict] = {}
         self.user_achievements: Dict = self.load_user_achievements()
+
+        # Ensure new structures exist for legacy files
+        self.user_achievements.setdefault("mini_games", {})
+
+    MINI_GAME_DEFINITIONS = {
+        "train_tetris": {
+            "title": "Train Yard Simulation",
+            "achievements": [
+                {
+                    "id": "first_dispatch",
+                    "name": "First Dispatch",
+                    "description": "Complete a simulation run of Train Yard.",
+                },
+                {
+                    "id": "rail_engineer",
+                    "name": "Rail Engineer",
+                    "description": "Score at least 1,000 points in a single session.",
+                },
+                {
+                    "id": "line_specialist",
+                    "name": "Line Specialist",
+                    "description": "Clear a cumulative total of 25 lines.",
+                },
+                {
+                    "id": "impeccable_alignment",
+                    "name": "Impeccable Alignment",
+                    "description": "Reach level 5 in any session.",
+                },
+            ],
+        }
+    }
 
     def load_user_achievements(self) -> Dict:
         try:
@@ -31,6 +63,106 @@ class AchievementManager:
                 json.dump(self.user_achievements, handle, indent=2)
         except Exception:
             pass
+
+    # -- Mini-game achievement support -------------------------------------------------
+
+    def record_mini_game_session(
+        self,
+        game_key: str,
+        *,
+        score: int = 0,
+        lines: int = 0,
+        level: int = 1,
+        duration: float = 0.0,
+        aborted: bool = False,
+    ) -> List[Dict]:
+        """Record a finished mini-game session and update achievements.
+
+        Returns a list of newly unlocked achievements (may be empty).
+        """
+
+        definition = self.MINI_GAME_DEFINITIONS.get(game_key)
+        if not definition:
+            return []
+
+        mini_games = self.user_achievements.setdefault("mini_games", {})
+        stats = mini_games.setdefault(
+            game_key,
+            {
+                "best_score": 0,
+                "total_lines": 0,
+                "sessions": 0,
+                "highest_level": 1,
+                "total_time": 0.0,
+                "achievements": [],
+            },
+        )
+
+        stats["sessions"] = stats.get("sessions", 0) + 1
+        stats["best_score"] = max(stats.get("best_score", 0), score)
+        stats["total_lines"] = stats.get("total_lines", 0) + lines
+        stats["highest_level"] = max(stats.get("highest_level", 1), level)
+        stats["total_time"] = stats.get("total_time", 0.0) + max(duration, 0.0)
+        stats["last_score"] = score
+        stats["last_lines"] = lines
+        stats["last_level"] = level
+        stats["last_played"] = time.time()
+        stats["last_aborted"] = aborted
+
+        earned_ids = set(stats.get("achievements", []))
+        unlocked: List[Dict] = []
+
+        for achievement in definition.get("achievements", []):
+            achievement_id = achievement["id"]
+            if achievement_id in earned_ids:
+                continue
+            if self._mini_game_condition_met(game_key, achievement_id, stats):
+                stats.setdefault("achievements", []).append(achievement_id)
+                earned_ids.add(achievement_id)
+                unlocked.append(achievement)
+
+        # Persist session metadata and any new achievements
+        self.save_user_achievements()
+
+        return unlocked
+
+    def _mini_game_condition_met(self, game_key: str, achievement_id: str, stats: Dict) -> bool:
+        if game_key == "train_tetris":
+            if achievement_id == "first_dispatch":
+                return stats.get("sessions", 0) >= 1 and not stats.get("last_aborted", False)
+            if achievement_id == "rail_engineer":
+                return stats.get("best_score", 0) >= 1000
+            if achievement_id == "line_specialist":
+                return stats.get("total_lines", 0) >= 25
+            if achievement_id == "impeccable_alignment":
+                return stats.get("highest_level", 1) >= 5
+        return False
+
+    def get_mini_game_stats(self, game_key: str) -> Dict:
+        definition = self.MINI_GAME_DEFINITIONS.get(game_key, {})
+        defaults = {
+            "best_score": 0,
+            "total_lines": 0,
+            "sessions": 0,
+            "highest_level": 1,
+            "total_time": 0.0,
+            "achievements": [],
+        }
+        stats = self.user_achievements.setdefault("mini_games", {}).get(game_key, {})
+        combined = {**defaults, **stats}
+        combined["title"] = definition.get("title", game_key)
+        return combined
+
+    def get_mini_game_achievements(self, game_key: str) -> List[Dict]:
+        definition = self.MINI_GAME_DEFINITIONS.get(game_key, {})
+        stats = self.get_mini_game_stats(game_key)
+        earned_ids = set(stats.get("achievements", []))
+        achievements = []
+        for achievement in definition.get("achievements", []):
+            achievement_copy = achievement.copy()
+            achievement_copy["earned"] = achievement["id"] in earned_ids
+            achievements.append(achievement_copy)
+        return achievements
 
     def get_game_achievements(self, game_id: str, platform_name: str, game_name: str = "") -> Dict:
         cache_key = f"{platform_name}_{game_id}"

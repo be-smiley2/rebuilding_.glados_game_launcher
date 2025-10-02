@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .theme import ApertureTheme
+from .achievements import AchievementManager
 
 
 class TrainTetrisGame:
@@ -82,9 +83,15 @@ class TrainTetrisGame:
         },
     ]
 
-    def __init__(self, root: tk.Tk, on_close: Optional[callable] = None):
+    def __init__(
+        self,
+        root: tk.Tk,
+        on_close: Optional[callable] = None,
+        achievement_manager: Optional[AchievementManager] = None,
+    ):
         self.root = root
         self.on_close = on_close
+        self.achievement_manager = achievement_manager
         self.window = tk.Toplevel(root)
         self.window.title("Train Yard Simulation")
         self.window.configure(bg=ApertureTheme.PRIMARY_BG)
@@ -133,6 +140,9 @@ class TrainTetrisGame:
         self.score = 0
         self.lines = 0
         self.level = 1
+        self._derailed = False
+        self._session_recorded = False
+        self.start_time = time.time()
 
         self.next_piece = self._create_piece()
         self.current_piece = self._take_next_piece()
@@ -164,6 +174,8 @@ class TrainTetrisGame:
     def close(self) -> None:
         if self._closed:
             return
+        aborted = self.running and not self._derailed
+        self._record_session(aborted)
         self.running = False
         if self.after_handle is not None:
             try:
@@ -355,10 +367,32 @@ class TrainTetrisGame:
 
     def _game_over(self) -> None:
         self.running = False
+        self._derailed = True
         self.status_var.set(f"Derailment detected. Final score: {self.score}.")
         self._update_labels()
         messagebox.showinfo("Train Yard Simulation", f"Derailment detected! Final score: {self.score}")
         self.close()
+
+    def _record_session(self, aborted: bool) -> None:
+        if self._session_recorded:
+            return
+        self._session_recorded = True
+
+        if not self.achievement_manager:
+            return
+
+        unlocked = self.achievement_manager.record_mini_game_session(
+            "train_tetris",
+            score=self.score,
+            lines=self.lines,
+            level=self.level,
+            duration=time.time() - self.start_time,
+            aborted=aborted,
+        )
+
+        if unlocked:
+            summary = "\n".join(f"• {ach['name']}: {ach['description']}" for ach in unlocked)
+            messagebox.showinfo("Mini-Game Achievements", f"New achievements unlocked!\n\n{summary}")
 
 
 __all__ = ["TrainTetrisGame"]
