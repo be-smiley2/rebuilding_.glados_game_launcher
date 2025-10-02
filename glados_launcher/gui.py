@@ -334,6 +334,7 @@ class ApertureEnrichmentCenterGUI:
             ("Analysis", self.show_analysis),
             ("Preferences", self.show_preferences),
             ("Check Updates", lambda: self.check_for_updates()),
+            ("Update", self.download_and_apply_update),
         ]
 
         control_row = ttk.Frame(mgmt_frame, style="Header.TFrame")
