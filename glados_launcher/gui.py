@@ -330,17 +330,27 @@ class ApertureEnrichmentCenterGUI:
             ("Remove", self.remove_selected_game),
             ("Purge", self.remove_all_games),
             ("Rate", self.rate_selected_game),
-            ("Mini-Games", self.show_mini_games),
             ("Analysis", self.show_analysis),
             ("Preferences", self.show_preferences),
-            ("Check Updates", lambda: self.check_for_updates()),
+            ("Check Updates", self.check_for_updates),
         ]
 
-        control_row = ttk.Frame(mgmt_frame, style="Header.TFrame")
-        control_row.pack(fill="x")
+        control_grid = ttk.Frame(mgmt_frame, style="Header.TFrame")
+        control_grid.pack(fill="x")
 
-        for text, command in mgmt_buttons:
-            ttk.Button(control_row, text=text, style="Aperture.TButton", command=command).pack(side="left", padx=3)
+        max_columns = 3
+        for column in range(max_columns):
+            control_grid.columnconfigure(column, weight=1)
+
+        for index, (text, command) in enumerate(mgmt_buttons):
+            row = index // max_columns
+            column = index % max_columns
+            ttk.Button(
+                control_grid,
+                text=text,
+                style="Aperture.TButton",
+                command=command,
+            ).grid(row=row, column=column, padx=3, pady=3, sticky="ew")
 
     def create_left_panel(self, parent: ttk.PanedWindow) -> None:
         self.left_panel = ttk.Frame(parent, style="Panel.TFrame")
