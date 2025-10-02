@@ -1,4 +1,4 @@
-"""Configuration and filesystem paths for the GLaDOS game launcher."""
+﻿"""Configuration and filesystem paths for the GLaDOS game launcher."""
 from __future__ import annotations
 
 import sys
