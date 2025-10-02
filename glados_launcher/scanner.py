@@ -6,7 +6,7 @@ import os
 import platform
 import re
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Set
 
 from .dependencies import winreg
 
@@ -81,11 +81,9 @@ class SmartGameScanner:
         return max(0.0, min(1.0, base_confidence))
 
     def scan_steam_windows(self) -> List[Dict]:
-        games: List[Dict] = []
-        all_games: Dict[str, Dict] = {}
         print("Scanning Steam on Windows...")
 
-        steam_paths_to_try = []
+        steam_paths_to_try: List[Path] = []
 
         try:
             key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\\WOW6432Node\\Valve\\Steam")
@@ -109,32 +107,82 @@ class SmartGameScanner:
                 steam_paths_to_try.append(path)
                 print(f"Found Steam at common path: {path}")
 
-        for steam_path in steam_paths_to_try:
-            steamapps_path = steam_path / "steamapps"
-            if steamapps_path.exists():
-                print(f"Scanning steamapps at: {steamapps_path}")
-                found_games = self.scan_steam_library(steamapps_path)
-
-                for game in found_games:
-                    game_key = f"{game['game_id']}_{game['name']}"
-                    if game_key not in all_games:
-                        all_games[game_key] = game
-
-                print(f"Found {len(found_games)} games in this Steam library")
-
-        games = list(all_games.values())
+        games = self._scan_steam_roots(steam_paths_to_try)
         print(f"Steam scan complete: {len(games)} unique games found")
         return games
 
     def scan_steam_mac(self) -> List[Dict]:
         steam_path = Path.home() / "Library/Application Support/Steam"
-        return self.scan_steam_library(steam_path / "steamapps") if steam_path.exists() else []
+        return self._scan_steam_roots([steam_path]) if steam_path.exists() else []
 
     def scan_steam_linux(self) -> List[Dict]:
-        for path in [Path.home() / ".steam/steam", Path.home() / ".local/share/Steam"]:
-            if path.exists():
-                return self.scan_steam_library(path / "steamapps")
-        return []
+        steam_roots = [path for path in [Path.home() / ".steam/steam", Path.home() / ".local/share/Steam"] if path.exists()]
+        return self._scan_steam_roots(steam_roots) if steam_roots else []
+
+    def _scan_steam_roots(self, steam_roots: List[Path]) -> List[Dict]:
+        all_games: Dict[str, Dict] = {}
+        visited_libraries: Set[Path] = set()
+
+        for steam_root in steam_roots:
+            for library_path in self.collect_steam_libraries(steam_root):
+                if library_path in visited_libraries:
+                    continue
+                visited_libraries.add(library_path)
+
+                found_games = self.scan_steam_library(library_path)
+                print(f"Found {len(found_games)} games in this Steam library")
+                for game in found_games:
+                    game_key = f"{game['game_id']}_{game['name']}"
+                    if game_key not in all_games:
+                        all_games[game_key] = game
+
+        return list(all_games.values())
+
+    def collect_steam_libraries(self, steam_root: Path) -> List[Path]:
+        libraries: List[Path] = []
+        steamapps = steam_root / "steamapps"
+
+        if steamapps.exists():
+            libraries.append(steamapps)
+
+        library_file = steamapps / "libraryfolders.vdf"
+        if not library_file.exists():
+            return libraries
+
+        try:
+            content = library_file.read_text(encoding="utf-8", errors="ignore")
+        except Exception as exc:
+            print(f"Could not read Steam library list at {library_file}: {exc}")
+            return libraries
+
+        discovered_paths = self._extract_library_paths_from_vdf(content)
+
+        for path_str in discovered_paths:
+            normalized = os.path.expandvars(path_str.strip().replace("\\\\", "\\"))
+            candidate = Path(normalized)
+
+            library_path = candidate if candidate.name.lower() == "steamapps" else candidate / "steamapps"
+
+            if library_path.exists() and library_path not in libraries:
+                libraries.append(library_path)
+                print(f"Discovered additional Steam library: {library_path}")
+
+        return libraries
+
+    def _extract_library_paths_from_vdf(self, content: str) -> List[str]:
+        paths: List[str] = []
+
+        for match in re.finditer(r'"path"\s*"([^"]+)"', content):
+            value = match.group(1)
+            if value and value not in paths:
+                paths.append(value)
+
+        for match in re.finditer(r'"(\d+)"\s*"([^"]+)"', content):
+            value = match.group(2)
+            if value and value not in paths:
+                paths.append(value)
+
+        return paths
 
     def scan_steam_library(self, steamapps_path: Path) -> List[Dict]:
         games: List[Dict] = []
