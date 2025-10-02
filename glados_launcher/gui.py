@@ -332,9 +332,57 @@ class ApertureEnrichmentCenterGUI:
         )
         self.rec_text.pack(fill="both", expand=True)
 
+        mini_game_panel = ttk.Frame(self.right_panel, style="Panel.TFrame")
+        mini_game_panel.pack(fill="x", padx=10, pady=(0, 10))
+
+        ttk.Label(mini_game_panel, text="MINI-GAME SIMULATIONS", style="GLaDOS.TLabel").pack(anchor="w")
+        ttk.Label(
+            mini_game_panel,
+            text="Quickly resume experimental simulations and monitor your progress.",
+            style="Wheatley.TLabel",
+        ).pack(anchor="w", pady=(4, 0))
+
+        stats_frame = ttk.Frame(mini_game_panel, style="Panel.TFrame")
+        stats_frame.pack(fill="x", pady=(8, 0))
+
+        self.mini_game_stats_vars: Dict[str, tk.StringVar] = {}
+        stats_config = [
+            ("sessions", "Sessions"),
+            ("best_score", "Best Score"),
+            ("total_lines", "Total Lines"),
+            ("highest_level", "Highest Level"),
+            ("total_time", "Total Time"),
+            ("last_played", "Last Attempt"),
+        ]
+
+        for key, label in stats_config:
+            var = tk.StringVar(value=f"{label}: …")
+            self.mini_game_stats_vars[key] = var
+            ttk.Label(stats_frame, textvariable=var, style="Aperture.TLabel").pack(anchor="w")
+
+        button_frame = ttk.Frame(mini_game_panel, style="Panel.TFrame")
+        button_frame.pack(fill="x", pady=(10, 0))
+
+        ttk.Button(
+            button_frame,
+            text="PLAY MINI-GAME",
+            style="GLaDOS.TButton",
+            command=self.show_tetris,
+            width=18,
+        ).pack(side="left")
+
+        ttk.Button(
+            button_frame,
+            text="VIEW DETAILS",
+            style="Aperture.TButton",
+            command=self.show_mini_games,
+            width=18,
+        ).pack(side="left", padx=(10, 0))
+
     def initialize_features(self) -> None:
         self.commentary_mode.set(self.user_preferences.get("commentary_level", "balanced"))
         self.update_recommendations()
+        self.update_mini_game_panel()
 
         self.add_commentary("GLaDOS", "Systems online. Ready for testing protocols.", "success")
         if not self.game_manager.get_games():
@@ -1102,6 +1150,33 @@ class ApertureEnrichmentCenterGUI:
         except Exception:
             pass
 
+    def update_mini_game_panel(self) -> None:
+        try:
+            stats = self.achievement_manager.get_mini_game_stats("train_tetris")
+
+            total_minutes = stats.get("total_time", 0.0) / 60.0
+            last_played_ts = stats.get("last_played")
+            if last_played_ts:
+                last_played = time.strftime("%Y-%m-%d %H:%M", time.localtime(last_played_ts))
+            else:
+                last_played = "Never"
+
+            display_values = {
+                "sessions": f"Sessions: {stats.get('sessions', 0)}",
+                "best_score": f"Best Score: {stats.get('best_score', 0)}",
+                "total_lines": f"Total Lines: {stats.get('total_lines', 0)}",
+                "highest_level": f"Highest Level: {stats.get('highest_level', 1)}",
+                "total_time": f"Total Time: {total_minutes:.1f} min",
+                "last_played": f"Last Attempt: {last_played}",
+            }
+
+            for key, value in display_values.items():
+                var = getattr(self, "mini_game_stats_vars", {}).get(key)
+                if var is not None:
+                    var.set(value)
+        except Exception:
+            pass
+
     def show_tetris(self) -> None:
         if hasattr(self, "tetris") and isinstance(self.tetris, TrainTetrisGame) and self.tetris.is_open:
             self.tetris.focus()
@@ -1109,9 +1184,13 @@ class ApertureEnrichmentCenterGUI:
 
         self.tetris = TrainTetrisGame(
             self.root,
-            on_close=lambda: setattr(self, "tetris", None),
+            on_close=self._handle_tetris_closed,
             achievement_manager=self.achievement_manager,
         )
+
+    def _handle_tetris_closed(self) -> None:
+        self.tetris = None
+        self.update_mini_game_panel()
 
     def check_for_updates(self) -> None:
         if self.update_check_in_progress:
