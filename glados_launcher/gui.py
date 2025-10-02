@@ -229,7 +229,6 @@ class ApertureEnrichmentCenterGUI:
             ("REMOVE", self.remove_selected_game),
             ("REMOVE ALL", self.remove_all_games),
             ("RATE", self.rate_selected_game),
-            ("ACHIEVEMENTS", self.show_achievements),
             ("MINI GAMES", self.show_mini_games),
             ("ANALYSIS", self.show_analysis),
             ("PREFS", self.show_preferences),
