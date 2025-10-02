@@ -98,6 +98,9 @@ class ApertureEnrichmentCenterGUI:
         self.root.geometry("1400x900")
         self.root.minsize(1000, 700)
         self.root.configure(bg=ApertureTheme.PRIMARY_BG)
+        self.root.option_add("*TCombobox*Listbox*Background", ApertureTheme.SECONDARY_BG)
+        self.root.option_add("*TCombobox*Listbox*Foreground", ApertureTheme.TEXT_PRIMARY)
+        self.root.option_add("*TCombobox*Listbox*Font", ApertureTheme.FONT_BASE)
 
         try:
             self.root.iconname("Aperture Science")
@@ -108,69 +111,143 @@ class ApertureEnrichmentCenterGUI:
         self.style = ttk.Style()
         self.style.theme_use("clam")
 
-        styles = {
-            "Aperture.TFrame": {
-                "background": ApertureTheme.PRIMARY_BG,
-                "relief": "flat",
-            },
-            "Panel.TFrame": {
-                "background": ApertureTheme.PANEL_BG,
-                "relief": "raised",
-                "borderwidth": 2,
-            },
-            "Header.TFrame": {
-                "background": ApertureTheme.ACCENT_BG,
-                "relief": "groove",
-                "borderwidth": 3,
-            },
-            "Aperture.TLabel": {
-                "background": ApertureTheme.PRIMARY_BG,
-                "foreground": ApertureTheme.TEXT_PRIMARY,
-                "font": ("Arial", 10),
-            },
-            "GLaDOS.TLabel": {
-                "background": ApertureTheme.ACCENT_BG,
-                "foreground": ApertureTheme.GLADOS_ORANGE,
-                "font": ("Arial", 14, "bold"),
-            },
-            "Wheatley.TLabel": {
-                "background": ApertureTheme.PRIMARY_BG,
-                "foreground": ApertureTheme.WHEATLEY_BLUE,
-                "font": ("Arial", 11),
-            },
-            "Aperture.TButton": {
-                "background": ApertureTheme.BUTTON_NORMAL,
-                "foreground": ApertureTheme.TEXT_PRIMARY,
-                "borderwidth": 2,
-                "relief": "raised",
-            },
-            "GLaDOS.TButton": {
-                "background": ApertureTheme.GLADOS_ORANGE,
-                "foreground": ApertureTheme.PRIMARY_BG,
-                "borderwidth": 2,
-                "relief": "raised",
-                "font": ("Arial", 10, "bold"),
-            },
-            "Aperture.Treeview": {
-                "background": ApertureTheme.SECONDARY_BG,
-                "foreground": ApertureTheme.TEXT_PRIMARY,
-                "fieldbackground": ApertureTheme.SECONDARY_BG,
-                "borderwidth": 2,
-                "relief": "groove",
-                "rowheight": 54,
-            },
-            "Aperture.TCheckbutton": {
-                "background": ApertureTheme.PRIMARY_BG,
-                "foreground": ApertureTheme.TEXT_PRIMARY,
-            },
-            "Aperture.TRadiobutton": {
-                "background": ApertureTheme.PRIMARY_BG,
-                "foreground": ApertureTheme.TEXT_PRIMARY,
-            },
-        }
+        self.style.configure("Aperture.TFrame", background=ApertureTheme.PRIMARY_BG)
+        self.style.configure("Panel.TFrame", background=ApertureTheme.PANEL_BG, borderwidth=1, relief="ridge")
+        self.style.configure("Header.TFrame", background=ApertureTheme.ACCENT_BG, borderwidth=0)
 
-        for style_name, style_config in styles.items():
-            self.style.configure(style_name, **style_config)
+        self.style.configure(
+            "Hero.TLabel",
+            background=ApertureTheme.ACCENT_BG,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            font=ApertureTheme.FONT_HEADING,
+        )
+        self.style.configure(
+            "Subheading.TLabel",
+            background=ApertureTheme.ACCENT_BG,
+            foreground=ApertureTheme.WHEATLEY_BLUE,
+            font=ApertureTheme.FONT_SUBHEADING,
+        )
+        self.style.configure(
+            "PanelTitle.TLabel",
+            background=ApertureTheme.PANEL_BG,
+            foreground=ApertureTheme.TEXT_ACCENT,
+            font=ApertureTheme.FONT_SUBHEADING,
+        )
+        self.style.configure(
+            "PanelBody.TLabel",
+            background=ApertureTheme.PANEL_BG,
+            foreground=ApertureTheme.TEXT_SECONDARY,
+            font=ApertureTheme.FONT_BASE,
+        )
+        self.style.configure(
+            "PanelCaption.TLabel",
+            background=ApertureTheme.PANEL_BG,
+            foreground=ApertureTheme.TEXT_MUTED,
+            font=ApertureTheme.FONT_SMALL,
+        )
+        self.style.configure(
+            "AccentCaption.TLabel",
+            background=ApertureTheme.ACCENT_BG,
+            foreground=ApertureTheme.TEXT_MUTED,
+            font=ApertureTheme.FONT_SMALL,
+        )
+        self.style.configure(
+            "Aperture.TLabel",
+            background=ApertureTheme.PRIMARY_BG,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            font=ApertureTheme.FONT_BASE,
+        )
+        self.style.configure(
+            "MiniStats.TLabel",
+            background=ApertureTheme.PANEL_BG,
+            foreground=ApertureTheme.TEXT_SECONDARY,
+            font=ApertureTheme.FONT_SMALL,
+        )
+
+        self.style.configure(
+            "Aperture.TButton",
+            background=ApertureTheme.BUTTON_NORMAL,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            font=ApertureTheme.FONT_BUTTON,
+            padding=(14, 6),
+            borderwidth=0,
+            focusthickness=0,
+        )
+        self.style.map(
+            "Aperture.TButton",
+            background=[("active", ApertureTheme.BUTTON_HOVER), ("pressed", ApertureTheme.BUTTON_ACTIVE)],
+            relief=[("pressed", "sunken")],
+        )
+
+        self.style.configure(
+            "GLaDOS.TButton",
+            background=ApertureTheme.GLADOS_ORANGE,
+            foreground=ApertureTheme.PRIMARY_BG,
+            font=ApertureTheme.FONT_BUTTON,
+            padding=(16, 6),
+            borderwidth=0,
+            focusthickness=0,
+        )
+        self.style.map(
+            "GLaDOS.TButton",
+            background=[("active", ApertureTheme.PORTAL_ORANGE), ("pressed", ApertureTheme.PORTAL_ORANGE)],
+            relief=[("pressed", "sunken")],
+        )
+
+        self.style.configure(
+            "Aperture.Treeview",
+            background=ApertureTheme.SECONDARY_BG,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            fieldbackground=ApertureTheme.SECONDARY_BG,
+            borderwidth=0,
+            rowheight=48,
+            font=ApertureTheme.FONT_BASE,
+        )
+        self.style.configure(
+            "Aperture.Treeview.Heading",
+            background=ApertureTheme.ACCENT_BG,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            font=ApertureTheme.FONT_BUTTON,
+            relief="flat",
+        )
+        self.style.map(
+            "Aperture.Treeview.Heading",
+            background=[("active", ApertureTheme.BUTTON_HOVER)],
+            relief=[("pressed", "sunken")],
+        )
+
+        self.style.configure(
+            "Aperture.TCheckbutton",
+            background=ApertureTheme.PRIMARY_BG,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            font=ApertureTheme.FONT_BASE,
+        )
+        self.style.configure(
+            "Aperture.TRadiobutton",
+            background=ApertureTheme.PRIMARY_BG,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            font=ApertureTheme.FONT_BASE,
+        )
+
+        self.style.configure("Aperture.TSeparator", background=ApertureTheme.BORDER_LIGHT)
+        self.style.configure(
+            "TCombobox",
+            fieldbackground=ApertureTheme.SECONDARY_BG,
+            background=ApertureTheme.SECONDARY_BG,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            arrowcolor=ApertureTheme.TEXT_PRIMARY,
+        )
+        self.style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", ApertureTheme.SECONDARY_BG)],
+            foreground=[("disabled", ApertureTheme.TEXT_MUTED)],
+        )
+        self.style.configure(
+            "TEntry",
+            fieldbackground=ApertureTheme.SECONDARY_BG,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            insertcolor=ApertureTheme.TEXT_PRIMARY,
+        )
 
     def create_interface(self) -> None:
         main_container = ttk.Frame(self.root, style="Aperture.TFrame")
@@ -188,22 +265,32 @@ class ApertureEnrichmentCenterGUI:
         content_paned.add(self.right_panel, weight=1)
 
     def create_header(self, parent: ttk.Frame) -> None:
-        header_frame = ttk.Frame(parent, style="Header.TFrame")
-        header_frame.pack(fill="x", pady=(0, 10))
+        header_frame = ttk.Frame(parent, style="Header.TFrame", padding=(24, 18))
+        header_frame.pack(fill="x", pady=(0, 12))
 
         title_frame = ttk.Frame(header_frame, style="Header.TFrame")
-        title_frame.pack(fill="x", padx=20, pady=15)
+        title_frame.pack(fill="x")
 
-        ttk.Label(title_frame, text="APERTURE SCIENCE ENRICHMENT CENTER", style="GLaDOS.TLabel").pack()
-        ttk.Label(title_frame, text="Advanced Game Management System v2.5", style="Wheatley.TLabel").pack(pady=(5, 0))
+        ttk.Label(title_frame, text="Aperture Science Enrichment Center", style="Hero.TLabel").pack(anchor="w")
+        ttk.Label(
+            title_frame,
+            text="Advanced Test Subject Administration v2.5",
+            style="AccentCaption.TLabel",
+        ).pack(anchor="w", pady=(6, 0))
+
+        ttk.Separator(header_frame, orient="horizontal", style="Aperture.TSeparator").pack(fill="x", pady=(18, 20))
 
         button_frame = ttk.Frame(header_frame, style="Header.TFrame")
-        button_frame.pack(fill="x", padx=20, pady=(0, 15))
+        button_frame.pack(fill="x")
 
         scan_frame = ttk.Frame(button_frame, style="Header.TFrame")
         scan_frame.pack(side="left")
+        ttk.Label(scan_frame, text="Scan Networks", style="AccentCaption.TLabel").pack(anchor="w", pady=(0, 8))
 
-        ttk.Button(scan_frame, text="FULL SCAN", style="GLaDOS.TButton", command=self.run_smart_scan).pack(side="left", padx=(0, 5))
+        scan_buttons = ttk.Frame(scan_frame, style="Header.TFrame")
+        scan_buttons.pack()
+
+        ttk.Button(scan_buttons, text="Full System Sweep", style="GLaDOS.TButton", command=self.run_smart_scan).pack(side="left", padx=(0, 6))
 
         platform_buttons = [
             ("Steam", lambda: self.run_platform_scan("steam")),
@@ -213,30 +300,47 @@ class ApertureEnrichmentCenterGUI:
         ]
 
         for text, command in platform_buttons:
-            ttk.Button(scan_frame, text=text, style="Aperture.TButton", command=command).pack(side="left", padx=2)
+            ttk.Button(scan_buttons, text=text, style="Aperture.TButton", command=command).pack(side="left", padx=3)
+
+        ttk.Separator(button_frame, orient="vertical", style="Aperture.TSeparator").pack(side="left", fill="y", padx=18)
 
         quick_action_frame = ttk.Frame(button_frame, style="Header.TFrame")
-        quick_action_frame.pack(side="left", padx=50)
+        quick_action_frame.pack(side="left")
+        ttk.Label(quick_action_frame, text="Immediate Actions", style="AccentCaption.TLabel").pack(anchor="w", pady=(0, 8))
 
-        ttk.Button(quick_action_frame, text="▶ LAUNCH TEST", style="GLaDOS.TButton", command=self.launch_selected_game, width=15).pack(side="left", padx=5)
-        ttk.Button(quick_action_frame, text="STORE PAGE", style="Aperture.TButton", command=self.open_store_page, width=12).pack(side="left", padx=5)
+        quick_buttons = ttk.Frame(quick_action_frame, style="Header.TFrame")
+        quick_buttons.pack()
+
+        ttk.Button(
+            quick_buttons,
+            text="▶ Launch Test",
+            style="GLaDOS.TButton",
+            command=self.launch_selected_game,
+        ).pack(side="left", padx=4)
+        ttk.Button(quick_buttons, text="Open Store", style="Aperture.TButton", command=self.open_store_page).pack(side="left", padx=4)
+
+        ttk.Separator(button_frame, orient="vertical", style="Aperture.TSeparator").pack(side="left", fill="y", padx=18)
 
         mgmt_frame = ttk.Frame(button_frame, style="Header.TFrame")
-        mgmt_frame.pack(side="right")
+        mgmt_frame.pack(side="left", fill="x", expand=True)
+        ttk.Label(mgmt_frame, text="Test Subject Controls", style="AccentCaption.TLabel").pack(anchor="w", pady=(0, 8))
 
         mgmt_buttons = [
-            ("ADD", self.show_add_dialog),
-            ("REMOVE", self.remove_selected_game),
-            ("REMOVE ALL", self.remove_all_games),
-            ("RATE", self.rate_selected_game),
-            ("MINI GAMES", self.show_mini_games),
-            ("ANALYSIS", self.show_analysis),
-            ("PREFS", self.show_preferences),
-            ("UPDATE", lambda: self.check_for_updates()),
+            ("Add", self.show_add_dialog),
+            ("Remove", self.remove_selected_game),
+            ("Purge", self.remove_all_games),
+            ("Rate", self.rate_selected_game),
+            ("Mini-Games", self.show_mini_games),
+            ("Analysis", self.show_analysis),
+            ("Preferences", self.show_preferences),
+            ("Check Updates", lambda: self.check_for_updates()),
         ]
 
+        control_row = ttk.Frame(mgmt_frame, style="Header.TFrame")
+        control_row.pack(fill="x")
+
         for text, command in mgmt_buttons:
-            ttk.Button(mgmt_frame, text=text, style="Aperture.TButton", command=command, width=10).pack(side="left", padx=2)
+            ttk.Button(control_row, text=text, style="Aperture.TButton", command=command).pack(side="left", padx=3)
 
     def create_left_panel(self, parent: ttk.PanedWindow) -> None:
         self.left_panel = ttk.Frame(parent, style="Panel.TFrame")
@@ -244,9 +348,9 @@ class ApertureEnrichmentCenterGUI:
         list_header = ttk.Frame(self.left_panel, style="Panel.TFrame")
         list_header.pack(fill="x", padx=10, pady=10)
 
-        ttk.Label(list_header, text="TEST SUBJECTS DATABASE", style="GLaDOS.TLabel").pack(side="left")
+        ttk.Label(list_header, text="Test Subject Database", style="PanelTitle.TLabel").pack(side="left")
 
-        self.game_count_label = ttk.Label(list_header, text="0 Subjects", style="Aperture.TLabel")
+        self.game_count_label = ttk.Label(list_header, text="0 Subjects", style="PanelCaption.TLabel")
         self.game_count_label.pack(side="right")
 
         tree_frame = ttk.Frame(self.left_panel, style="Panel.TFrame")
@@ -283,8 +387,8 @@ class ApertureEnrichmentCenterGUI:
         tips_label = ttk.Label(
             status_frame,
             text="Tip: Double-click a game to launch it | Press Enter for selected game",
-            style="Aperture.TLabel",
-            font=("Arial", 9, "italic"),
+            style="PanelCaption.TLabel",
+            font=(ApertureTheme.FONT_FAMILY, 9, "italic"),
         )
         tips_label.pack(anchor="w", pady=5)
 
@@ -294,7 +398,7 @@ class ApertureEnrichmentCenterGUI:
         comment_header = ttk.Frame(self.right_panel, style="Panel.TFrame")
         comment_header.pack(fill="x", padx=10, pady=10)
 
-        ttk.Label(comment_header, text="AI COMMENTARY SYSTEM", style="GLaDOS.TLabel").pack()
+        ttk.Label(comment_header, text="AI Commentary System", style="PanelTitle.TLabel").pack()
 
         comment_frame = ttk.Frame(self.right_panel, style="Panel.TFrame")
         comment_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -306,15 +410,17 @@ class ApertureEnrichmentCenterGUI:
             font=("Courier", 9),
             wrap="word",
             height=15,
-            borderwidth=2,
-            relief="groove",
+            borderwidth=1,
+            relief="flat",
+            highlightthickness=0,
         )
         self.commentary_text.pack(fill="both", expand=True)
+        self.commentary_text.configure(insertbackground=ApertureTheme.TEXT_PRIMARY)
 
         rec_header = ttk.Frame(self.right_panel, style="Panel.TFrame")
         rec_header.pack(fill="x", padx=10, pady=(10, 5))
 
-        ttk.Label(rec_header, text="ACQUISITION RECOMMENDATIONS", style="Wheatley.TLabel").pack()
+        ttk.Label(rec_header, text="Acquisition Recommendations", style="PanelBody.TLabel").pack()
 
         rec_frame = ttk.Frame(self.right_panel, style="Panel.TFrame")
         rec_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
@@ -323,23 +429,25 @@ class ApertureEnrichmentCenterGUI:
             rec_frame,
             bg=ApertureTheme.SECONDARY_BG,
             fg=ApertureTheme.TEXT_SECONDARY,
-            font=("Arial", 9),
+            font=ApertureTheme.FONT_BASE,
             wrap="word",
             height=8,
             state="disabled",
-            borderwidth=2,
-            relief="groove",
+            borderwidth=1,
+            relief="flat",
+            highlightthickness=0,
         )
         self.rec_text.pack(fill="both", expand=True)
+        self.rec_text.configure(insertbackground=ApertureTheme.TEXT_PRIMARY)
 
         mini_game_panel = ttk.Frame(self.right_panel, style="Panel.TFrame")
         mini_game_panel.pack(fill="x", padx=10, pady=(0, 10))
 
-        ttk.Label(mini_game_panel, text="MINI-GAME SIMULATIONS", style="GLaDOS.TLabel").pack(anchor="w")
+        ttk.Label(mini_game_panel, text="Mini-Game Simulations", style="PanelTitle.TLabel").pack(anchor="w")
         ttk.Label(
             mini_game_panel,
             text="Quickly resume experimental simulations and monitor your progress.",
-            style="Wheatley.TLabel",
+            style="PanelCaption.TLabel",
         ).pack(anchor="w", pady=(4, 0))
 
         stats_frame = ttk.Frame(mini_game_panel, style="Panel.TFrame")
@@ -358,7 +466,7 @@ class ApertureEnrichmentCenterGUI:
         for key, label in stats_config:
             var = tk.StringVar(value=f"{label}: …")
             self.mini_game_stats_vars[key] = var
-            ttk.Label(stats_frame, textvariable=var, style="Aperture.TLabel").pack(anchor="w")
+            ttk.Label(stats_frame, textvariable=var, style="MiniStats.TLabel").pack(anchor="w")
 
         button_frame = ttk.Frame(mini_game_panel, style="Panel.TFrame")
         button_frame.pack(fill="x", pady=(10, 0))
@@ -782,11 +890,11 @@ class ApertureEnrichmentCenterGUI:
         header_frame = ttk.Frame(dialog, style="Header.TFrame")
         header_frame.pack(fill="x", padx=20, pady=20)
 
-        ttk.Label(header_frame, text="APERTURE MINI-GAMES", style="GLaDOS.TLabel").pack()
+        ttk.Label(header_frame, text="Aperture Mini-Games", style="Hero.TLabel").pack()
         ttk.Label(
             header_frame,
             text="Complete experimental simulations to unlock custom achievements.",
-            style="Wheatley.TLabel",
+            style="AccentCaption.TLabel",
         ).pack(pady=(6, 0))
 
         content_frame = ttk.Frame(dialog, style="Panel.TFrame")
@@ -814,30 +922,30 @@ class ApertureEnrichmentCenterGUI:
             f"Last Attempt: {last_played}",
         ]
 
-        ttk.Label(stats_frame, text="TRAIN YARD SIMULATION STATS", style="GLaDOS.TLabel").pack(anchor="w")
+        ttk.Label(stats_frame, text="Train Yard Simulation Stats", style="PanelTitle.TLabel").pack(anchor="w")
         for line in stats_lines:
-            ttk.Label(stats_frame, text=line, style="Aperture.TLabel").pack(anchor="w", pady=(4, 0))
+            ttk.Label(stats_frame, text=line, style="MiniStats.TLabel").pack(anchor="w", pady=(4, 0))
 
         ach_frame = ttk.Frame(content_frame, style="Panel.TFrame")
         ach_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
 
-        ttk.Label(ach_frame, text="ACHIEVEMENT PROTOCOLS", style="GLaDOS.TLabel").pack(anchor="w")
+        ttk.Label(ach_frame, text="Achievement Protocols", style="PanelTitle.TLabel").pack(anchor="w")
 
         if achievements:
             for achievement in achievements:
                 status = "✔" if achievement.get("earned") else "○"
                 text = f"{status} {achievement['name']}"
-                ttk.Label(ach_frame, text=text, style="Aperture.TLabel").pack(anchor="w", pady=(6, 0))
+                ttk.Label(ach_frame, text=text, style="PanelBody.TLabel").pack(anchor="w", pady=(6, 0))
                 ttk.Label(
                     ach_frame,
                     text=f"    {achievement['description']}",
-                    style="Wheatley.TLabel" if achievement.get("earned") else "Aperture.TLabel",
+                    style="PanelCaption.TLabel" if achievement.get("earned") else "PanelBody.TLabel",
                 ).pack(anchor="w")
         else:
             ttk.Label(
                 ach_frame,
                 text="No experimental achievements defined yet.",
-                style="Aperture.TLabel",
+                style="PanelBody.TLabel",
             ).pack(anchor="w", pady=10)
 
         button_frame = ttk.Frame(content_frame, style="Panel.TFrame")
@@ -874,7 +982,7 @@ class ApertureEnrichmentCenterGUI:
         header_frame = ttk.Frame(dialog, style="Header.TFrame")
         header_frame.pack(fill="x", padx=20, pady=20)
 
-        ttk.Label(header_frame, text="SUBJECT ACHIEVEMENT ANALYSIS", style="GLaDOS.TLabel").pack()
+        ttk.Label(header_frame, text="Subject Achievement Analysis", style="Hero.TLabel").pack()
 
         content_frame = ttk.Frame(dialog, style="Panel.TFrame")
         content_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -883,13 +991,15 @@ class ApertureEnrichmentCenterGUI:
             content_frame,
             bg=ApertureTheme.SECONDARY_BG,
             fg=ApertureTheme.TEXT_PRIMARY,
-            font=("Arial", 10),
+            font=ApertureTheme.FONT_BASE,
             wrap="word",
             state="normal",
-            borderwidth=2,
-            relief="groove",
+            borderwidth=1,
+            relief="flat",
+            highlightthickness=0,
         )
         info_text.pack(fill="both", expand=True)
+        info_text.configure(insertbackground=ApertureTheme.TEXT_PRIMARY)
 
         games = self.game_manager.get_games()
         summary = self.achievement_manager.get_achievement_summary(games)
@@ -938,13 +1048,17 @@ class ApertureEnrichmentCenterGUI:
         header_frame = ttk.Frame(dialog, style="Header.TFrame")
         header_frame.pack(fill="x", padx=20, pady=20)
 
-        ttk.Label(header_frame, text=f"SUBJECT ACHIEVEMENTS - {game_name.upper()}", style="GLaDOS.TLabel").pack()
+        ttk.Label(
+            header_frame,
+            text=f"Subject Achievements - {game_name}",
+            style="Hero.TLabel",
+        ).pack()
 
         progress_frame = ttk.Frame(dialog, style="Panel.TFrame")
         progress_frame.pack(fill="x", padx=20, pady=(0, 10))
 
         progress_text = f"Progress: {achievements['unlocked']}/{achievements['total']} ({achievements['percentage']:.1f}%)"
-        ttk.Label(progress_frame, text=progress_text, style="Wheatley.TLabel").pack(pady=10)
+        ttk.Label(progress_frame, text=progress_text, style="PanelBody.TLabel").pack(pady=10)
 
         list_frame = ttk.Frame(dialog, style="Panel.TFrame")
         list_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -994,7 +1108,7 @@ class ApertureEnrichmentCenterGUI:
         header_frame = ttk.Frame(dialog, style="Header.TFrame")
         header_frame.pack(fill="x", padx=20, pady=20)
 
-        ttk.Label(header_frame, text="APERTURE BEHAVIORAL ANALYSIS", style="GLaDOS.TLabel").pack()
+        ttk.Label(header_frame, text="Aperture Behavioral Analysis", style="Hero.TLabel").pack()
 
         analysis_frame = ttk.Frame(dialog, style="Panel.TFrame")
         analysis_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -1003,13 +1117,15 @@ class ApertureEnrichmentCenterGUI:
             analysis_frame,
             bg=ApertureTheme.SECONDARY_BG,
             fg=ApertureTheme.TEXT_PRIMARY,
-            font=("Arial", 10),
+            font=ApertureTheme.FONT_BASE,
             wrap="word",
             state="normal",
-            borderwidth=2,
-            relief="groove",
+            borderwidth=1,
+            relief="flat",
+            highlightthickness=0,
         )
         analysis_text.pack(fill="both", expand=True)
+        analysis_text.configure(insertbackground=ApertureTheme.TEXT_PRIMARY)
 
         games = self.game_manager.get_games()
         if not games:
