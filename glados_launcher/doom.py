@@ -14,14 +14,14 @@ from .achievements import AchievementManager
 
 
 class Doom2016MiniGame:
-    """Small top-down arena shooter inspired by DOOM (2016)."""
+    """Small pseudo-3D combat simulator inspired by DOOM (2016)."""
 
     WIDTH = 720
     HEIGHT = 480
     FRAME_MS = 30
-    PLAYER_SPEED = 7
-    BULLET_SPEED = 18
-    DEMON_BASE_SPEED = 3
+    PLAYER_SPEED = 0.28  # world units per frame (strafe)
+    BULLET_SPEED = 0.9  # world units per frame (forward)
+    DEMON_BASE_SPEED = 0.065  # world units per frame (towards player)
     FIRE_COOLDOWN = 180  # ms
     SPAWN_INTERVAL = 1200  # ms
     SPAWN_ACCELERATION = 45  # ms faster per threat level
@@ -55,7 +55,10 @@ class Doom2016MiniGame:
         ).pack(anchor="w")
         ttk.Label(
             header,
-            text="Eliminate waves of holographic demons. Move with WASD/arrow keys, space to fire plasma. Esc exits.",
+            text=(
+                "Step into a holographic arena and eliminate rushing demons. "
+                "Strafe with WASD/arrow keys, space to fire plasma. Esc exits."
+            ),
             style="PanelCaption.TLabel",
             wraplength=self.WIDTH,
         ).pack(anchor="w", pady=(4, 0))
@@ -80,14 +83,14 @@ class Doom2016MiniGame:
             arena_frame,
             width=self.WIDTH,
             height=self.HEIGHT,
-            bg="#11151c",
+            bg="#040608",
             highlightthickness=0,
         )
         self.canvas.pack()
 
         ttk.Label(
             self.window,
-            text="Tip: Maintain momentum. Armor is lost on contact – lose all armor and the run ends.",
+            text="Tip: Maintain your footing. Demons will breach the line if they reach you.",
             style="PanelCaption.TLabel",
             wraplength=self.WIDTH,
         ).pack(anchor="w", padx=20, pady=(0, 10))
@@ -113,21 +116,23 @@ class Doom2016MiniGame:
         self.running = True
 
         self.player = {
-            "x": 70.0,
-            "y": self.HEIGHT / 2,
-            "size": 26,
+            "x": 0.0,  # horizontal position in world units
+            "tilt": 0.0,  # pitch offset for the camera
             "armor": self.MAX_ARMOR,
-            "id": None,
         }
         self.input_state: Dict[str, bool] = {
-            "up": False,
-            "down": False,
+            "forward": False,
+            "backward": False,
             "left": False,
             "right": False,
         }
         self.last_fire_time = 0.0
         self.bullets: List[Dict[str, float]] = []
         self.demons: List[Dict[str, float]] = []
+
+        self.field_of_view = math.radians(72)
+        self.projection_plane = (self.WIDTH / 2) / math.tan(self.field_of_view / 2)
+        self.horizon_y = self.HEIGHT * 0.38
 
         self.score = 0
         self.kills = 0
@@ -137,7 +142,7 @@ class Doom2016MiniGame:
         self.start_time = time.time()
         self._session_recorded = False
 
-        self._draw_player()
+        self._render_scene()
         self._schedule_loop()
         self._schedule_spawn()
 
@@ -205,159 +210,118 @@ class Doom2016MiniGame:
         self._update_demons()
         self._check_collisions()
         self._update_hud()
+        self._render_scene()
 
         self.threat_level = 1 + self.kills // 10
         self._schedule_loop()
+
+    # -- Entities ------------------------------------------------------------------
 
     def _spawn_demon(self) -> None:
         if not self.running:
             return
 
-        demon_size = random.randint(24, 40)
-        speed = self.DEMON_BASE_SPEED + (self.threat_level - 1) * 0.4 + random.uniform(-0.5, 0.5)
+        demon_size = random.uniform(0.6, 1.4)
+        base_speed = self.DEMON_BASE_SPEED + (self.threat_level - 1) * 0.01
         demon = {
-            "x": float(self.WIDTH + demon_size),
-            "y": float(random.randint(demon_size, self.HEIGHT - demon_size)),
-            "size": float(demon_size),
-            "speed": speed,
-            "id": None,
+            "x": random.uniform(-4.0, 4.0),
+            "z": random.uniform(8.0, 20.0),
+            "size": demon_size,
+            "speed": base_speed + random.uniform(-0.01, 0.02),
         }
-        demon["id"] = self.canvas.create_oval(
-            demon["x"] - demon_size / 2,
-            demon["y"] - demon_size / 2,
-            demon["x"] + demon_size / 2,
-            demon["y"] + demon_size / 2,
-            fill="#aa1b1b",
-            outline="#4d0808",
-            width=2,
-        )
         self.demons.append(demon)
         self._schedule_spawn()
 
     def _update_player(self) -> None:
-        dx = dy = 0.0
-        if self.input_state["up"]:
-            dy -= self.PLAYER_SPEED
-        if self.input_state["down"]:
-            dy += self.PLAYER_SPEED
         if self.input_state["left"]:
-            dx -= self.PLAYER_SPEED
+            self.player["x"] -= self.PLAYER_SPEED
         if self.input_state["right"]:
-            dx += self.PLAYER_SPEED
+            self.player["x"] += self.PLAYER_SPEED
 
-        if dx and dy:
-            length = math.sqrt(dx * dx + dy * dy)
-            dx = dx / length * self.PLAYER_SPEED
-            dy = dy / length * self.PLAYER_SPEED
+        self.player["x"] = max(-4.5, min(4.5, self.player["x"]))
 
-        self.player["x"] = min(max(self.player["x"] + dx, 30), self.WIDTH - 30)
-        self.player["y"] = min(max(self.player["y"] + dy, 30), self.HEIGHT - 30)
-        self._draw_player()
+        tilt_target = 0.0
+        if self.input_state["forward"]:
+            tilt_target = 0.8
+        elif self.input_state["backward"]:
+            tilt_target = -0.6
 
-    def _draw_player(self) -> None:
-        size = self.player["size"]
-        x = self.player["x"]
-        y = self.player["y"]
-        if self.player["id"] is None:
-            self.player["id"] = self.canvas.create_polygon(0, 0, 0, 0, 0, 0, fill="#20d07a", outline="#0f7f45", width=2)
-        self.canvas.coords(
-            self.player["id"],
-            x - size,
-            y,
-            x - size / 2,
-            y - size / 2,
-            x + size,
-            y,
-            x - size / 2,
-            y + size / 2,
-        )
+        self.player["tilt"] += (tilt_target - self.player["tilt"]) * 0.22
 
     def _update_bullets(self) -> None:
         active: List[Dict[str, float]] = []
         for bullet in self.bullets:
-            bullet["x"] += self.BULLET_SPEED
-            if bullet["x"] > self.WIDTH + 20:
-                if bullet.get("id"):
-                    self.canvas.delete(bullet["id"])
+            bullet["z"] += self.BULLET_SPEED
+            if bullet["z"] > 28:
                 continue
-            self.canvas.move(bullet["id"], self.BULLET_SPEED, 0)
             active.append(bullet)
         self.bullets = active
 
     def _update_demons(self) -> None:
         active: List[Dict[str, float]] = []
         for demon in self.demons:
-            demon["x"] -= demon["speed"]
-            self.canvas.move(demon["id"], -demon["speed"], 0)
-            if demon["x"] < -50:
-                self.canvas.delete(demon["id"])
-                continue
+            demon["z"] -= demon["speed"]
+            demon["z"] = max(demon["z"], 0.25)
             active.append(demon)
         self.demons = active
 
     def _check_collisions(self) -> None:
         to_remove_bullets: List[Dict[str, float]] = []
         to_remove_demons: List[Dict[str, float]] = []
+        killed_demons: List[Dict[str, float]] = []
 
         for demon in self.demons:
-            demon_box = self.canvas.bbox(demon["id"])
-            if not demon_box:
+            if demon in to_remove_demons:
                 continue
+
             for bullet in self.bullets:
                 if bullet in to_remove_bullets:
                     continue
-                if self._intersects(bullet["id"], demon_box):
+
+                if bullet["z"] >= demon["z"] - 0.45 and abs(bullet["x"] - demon["x"]) <= demon["size"] * 0.55:
                     to_remove_bullets.append(bullet)
                     to_remove_demons.append(demon)
+                    killed_demons.append(demon)
                     break
 
-            if self._player_hit(demon_box):
-                to_remove_demons.append(demon)
-                self._lose_armor()
-                if self.player["armor"] <= 0:
-                    self._game_over()
-                    return
+            if demon in to_remove_demons:
+                continue
 
-        if to_remove_bullets or to_remove_demons:
-            for bullet in to_remove_bullets:
-                if bullet.get("id"):
-                    self.canvas.delete(bullet["id"])
+            if demon["z"] <= 0.9:
+                if abs(demon["x"] - self.player["x"]) <= demon["size"] * 0.65:
+                    to_remove_demons.append(demon)
+                    self._lose_armor()
+                    if self.player["armor"] <= 0:
+                        self._game_over()
+                        return
+                else:
+                    to_remove_demons.append(demon)
+
+        if to_remove_demons:
             for demon in to_remove_demons:
-                if demon.get("id"):
-                    self.canvas.delete(demon["id"])
                 if demon in self.demons:
                     self.demons.remove(demon)
-                    self.score += 50 + int(demon["size"]) * 2
-                    self.kills += 1
 
+        if killed_demons:
+            for demon in killed_demons:
+                self.score += 65 + int(demon["size"] * 55)
+                self.kills += 1
+
+        if to_remove_bullets:
             self.bullets = [b for b in self.bullets if b not in to_remove_bullets]
-
-    def _intersects(self, bullet_id: int, demon_box: tuple) -> bool:
-        bullet_box = self.canvas.bbox(bullet_id)
-        if not bullet_box:
-            return False
-        bx1, by1, bx2, by2 = bullet_box
-        dx1, dy1, dx2, dy2 = demon_box
-        return not (bx2 < dx1 or bx1 > dx2 or by2 < dy1 or by1 > dy2)
-
-    def _player_hit(self, demon_box: tuple) -> bool:
-        player_box = self.canvas.bbox(self.player["id"])
-        if not player_box:
-            return False
-        px1, py1, px2, py2 = player_box
-        dx1, dy1, dx2, dy2 = demon_box
-        return not (px2 < dx1 or px1 > dx2 or py2 < dy1 or py1 > dy2)
 
     def _lose_armor(self) -> None:
         if self.player["armor"] > 0:
             self.player["armor"] -= 1
         self._update_hud()
 
+    # -- Input ---------------------------------------------------------------------
+
     def _on_key_press(self, event: tk.Event) -> None:
         if event.keysym in ("w", "W", "Up"):
-            self.input_state["up"] = True
+            self.input_state["forward"] = True
         if event.keysym in ("s", "S", "Down"):
-            self.input_state["down"] = True
+            self.input_state["backward"] = True
         if event.keysym in ("a", "A", "Left"):
             self.input_state["left"] = True
         if event.keysym in ("d", "D", "Right"):
@@ -365,9 +329,9 @@ class Doom2016MiniGame:
 
     def _on_key_release(self, event: tk.Event) -> None:
         if event.keysym in ("w", "W", "Up"):
-            self.input_state["up"] = False
+            self.input_state["forward"] = False
         if event.keysym in ("s", "S", "Down"):
-            self.input_state["down"] = False
+            self.input_state["backward"] = False
         if event.keysym in ("a", "A", "Left"):
             self.input_state["left"] = False
         if event.keysym in ("d", "D", "Right"):
@@ -380,17 +344,131 @@ class Doom2016MiniGame:
         self.last_fire_time = now
         bullet = {
             "x": self.player["x"],
-            "y": self.player["y"],
-            "id": self.canvas.create_rectangle(
-                self.player["x"],
-                self.player["y"] - 4,
-                self.player["x"] + 18,
-                self.player["y"] + 4,
-                fill="#f9d648",
-                outline="#af9400",
-            ),
+            "z": 1.2,
+            "tilt": self.player["tilt"],
         }
         self.bullets.append(bullet)
+
+    # -- Rendering -----------------------------------------------------------------
+
+    def _render_scene(self) -> None:
+        self.canvas.delete("all")
+        tilt_offset = self.player["tilt"] * 38
+
+        self._draw_background(tilt_offset)
+        self._draw_corridor(tilt_offset)
+
+        for demon in sorted(self.demons, key=lambda d: d["z"], reverse=True):
+            self._draw_demon(demon, tilt_offset)
+        for bullet in sorted(self.bullets, key=lambda b: b["z"], reverse=True):
+            self._draw_bullet(bullet, tilt_offset)
+
+        self._draw_crosshair()
+
+    def _draw_background(self, tilt_offset: float) -> None:
+        sky_height = self.horizon_y + tilt_offset
+        self.canvas.create_rectangle(0, 0, self.WIDTH, sky_height, fill="#0a1a2a", outline="")
+        self.canvas.create_rectangle(0, sky_height, self.WIDTH, self.HEIGHT, fill="#1b0d0d", outline="")
+
+    def _draw_corridor(self, tilt_offset: float) -> None:
+        horizon = self.horizon_y + tilt_offset
+        floor_mid = self.HEIGHT * 0.82 + tilt_offset * 0.6
+        self.canvas.create_polygon(
+            0,
+            self.HEIGHT,
+            self.WIDTH,
+            self.HEIGHT,
+            self.WIDTH * 0.78,
+            horizon,
+            self.WIDTH * 0.22,
+            horizon,
+            fill="#2a0f10",
+            outline="#391414",
+            width=2,
+        )
+
+        self.canvas.create_polygon(
+            0,
+            self.HEIGHT,
+            self.WIDTH * 0.22,
+            horizon,
+            self.WIDTH * 0.32,
+            floor_mid,
+            self.WIDTH * 0.08,
+            self.HEIGHT,
+            fill="#1d0507",
+            outline="",
+        )
+
+        self.canvas.create_polygon(
+            self.WIDTH,
+            self.HEIGHT,
+            self.WIDTH * 0.78,
+            horizon,
+            self.WIDTH * 0.68,
+            floor_mid,
+            self.WIDTH * 0.92,
+            self.HEIGHT,
+            fill="#1d0507",
+            outline="",
+        )
+
+    def _project(self, x: float, z: float) -> tuple[float, float]:
+        z = max(z, 0.3)
+        scale = self.projection_plane / z
+        screen_x = self.WIDTH / 2 + (x - self.player["x"]) * scale * 42
+        return screen_x, scale
+
+    def _draw_demon(self, demon: Dict[str, float], tilt_offset: float) -> None:
+        screen_x, scale = self._project(demon["x"], demon["z"])
+        size = demon["size"] * scale * 120
+        bottom = self.HEIGHT * 0.86 + tilt_offset * 0.4
+        top = bottom - size
+
+        color = "#d13a3a" if demon["z"] < 4.0 else "#8f2626"
+        outline = "#531212"
+        width = max(1, int(2 + (1 / max(demon["z"], 1.0))))
+        self.canvas.create_rectangle(
+            screen_x - size * 0.35,
+            top,
+            screen_x + size * 0.35,
+            bottom,
+            fill=color,
+            outline=outline,
+            width=width,
+        )
+
+        glow_radius = max(6, int(18 / max(demon["z"], 1.2)))
+        self.canvas.create_oval(
+            screen_x - glow_radius,
+            top - glow_radius,
+            screen_x + glow_radius,
+            top + glow_radius,
+            outline="#ffdf73",
+            width=1,
+        )
+
+    def _draw_bullet(self, bullet: Dict[str, float], tilt_offset: float) -> None:
+        screen_x, scale = self._project(bullet["x"], bullet["z"])
+        top = self.horizon_y + tilt_offset - bullet["tilt"] * 60
+        length = 16 + 42 / max(bullet["z"], 1.2)
+        self.canvas.create_line(
+            screen_x,
+            top,
+            screen_x,
+            top + length,
+            fill="#fadb5a",
+            width=max(2, int(2 + scale * 0.8)),
+        )
+
+    def _draw_crosshair(self) -> None:
+        cx = self.WIDTH / 2
+        cy = self.horizon_y + self.player["tilt"] * 24
+        size = 14
+        self.canvas.create_line(cx - size, cy, cx + size, cy, fill="#e3f8ff", width=2)
+        self.canvas.create_line(cx, cy - size, cx, cy + size, fill="#e3f8ff", width=2)
+
+    # -- HUD -----------------------------------------------------------------------
 
     def _update_hud(self) -> None:
         self.score_var.set(f"Combat Rating: {self.score}")
