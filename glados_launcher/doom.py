@@ -26,6 +26,15 @@ class Doom2016MiniGame:
     SPAWN_INTERVAL = 1200  # ms
     SPAWN_ACCELERATION = 45  # ms faster per threat level
     MAX_ARMOR = 3
+    MAX_HEALTH = 100
+    HEALTH_PICKUP_AMOUNT = 25
+    HEALTH_LOSS_PER_HIT = 34
+    PICKUP_DROP_CHANCE = 0.28
+    PICKUP_LIFETIME = 9.0  # seconds
+    PICKUP_SPEED = 0.04
+    POWER_UP_DURATION = 6.0  # seconds
+    HASTE_FIRE_RATE_MULTIPLIER = 0.55
+    HASTE_BULLET_SPEED_MULTIPLIER = 1.3
 
     def __init__(
         self,
@@ -69,12 +78,16 @@ class Doom2016MiniGame:
         self.score_var = tk.StringVar(value="Combat Rating: 0")
         self.kills_var = tk.StringVar(value="Demons Eliminated: 0")
         self.threat_var = tk.StringVar(value="Threat Level: 1")
+        self.health_var = tk.StringVar(value="Vital Signs: 100%")
         self.armor_var = tk.StringVar(value="Armor Integrity: ███")
+        self.powerup_var = tk.StringVar(value="Power-Up: None")
 
         ttk.Label(stats_frame, textvariable=self.score_var, style="GLaDOS.TLabel").pack(anchor="w")
         ttk.Label(stats_frame, textvariable=self.kills_var, style="Wheatley.TLabel").pack(anchor="w")
         ttk.Label(stats_frame, textvariable=self.threat_var, style="Aperture.TLabel").pack(anchor="w")
+        ttk.Label(stats_frame, textvariable=self.health_var, style="PanelBody.TLabel").pack(anchor="w")
         ttk.Label(stats_frame, textvariable=self.armor_var, style="PanelBody.TLabel").pack(anchor="w")
+        ttk.Label(stats_frame, textvariable=self.powerup_var, style="PanelCaption.TLabel").pack(anchor="w")
 
         arena_frame = ttk.Frame(self.window, style="Panel.TFrame")
         arena_frame.pack(padx=20, pady=(0, 10))
@@ -119,6 +132,7 @@ class Doom2016MiniGame:
             "x": 0.0,  # horizontal position in world units
             "tilt": 0.0,  # pitch offset for the camera
             "armor": self.MAX_ARMOR,
+            "health": self.MAX_HEALTH,
         }
         self.input_state: Dict[str, bool] = {
             "forward": False,
@@ -129,6 +143,7 @@ class Doom2016MiniGame:
         self.last_fire_time = 0.0
         self.bullets: List[Dict[str, float]] = []
         self.demons: List[Dict[str, float]] = []
+        self.pickups: List[Dict[str, float]] = []
 
         self.field_of_view = math.radians(72)
         self.projection_plane = (self.WIDTH / 2) / math.tan(self.field_of_view / 2)
@@ -137,6 +152,10 @@ class Doom2016MiniGame:
         self.score = 0
         self.kills = 0
         self.threat_level = 1
+        self.fire_cooldown = float(self.FIRE_COOLDOWN)
+        self.bullet_speed = float(self.BULLET_SPEED)
+        self.active_power_up: Optional[str] = None
+        self.power_up_end_time = 0.0
         self.loop_handle: Optional[str] = None
         self.spawn_handle: Optional[str] = None
         self.start_time = time.time()
@@ -208,7 +227,12 @@ class Doom2016MiniGame:
         self._update_player()
         self._update_bullets()
         self._update_demons()
+        self._update_pickups()
         self._check_collisions()
+        if not self.running:
+            return
+        self._check_pickup_collisions()
+        self._update_power_up_state()
         self._update_hud()
         self._render_scene()
 
@@ -251,7 +275,7 @@ class Doom2016MiniGame:
     def _update_bullets(self) -> None:
         active: List[Dict[str, float]] = []
         for bullet in self.bullets:
-            bullet["z"] += self.BULLET_SPEED
+            bullet["z"] += self.bullet_speed
             if bullet["z"] > 28:
                 continue
             active.append(bullet)
@@ -264,6 +288,16 @@ class Doom2016MiniGame:
             demon["z"] = max(demon["z"], 0.25)
             active.append(demon)
         self.demons = active
+
+    def _update_pickups(self) -> None:
+        now = time.time()
+        active: List[Dict[str, float]] = []
+        for pickup in self.pickups:
+            pickup["z"] = max(pickup["z"] - pickup.get("speed", self.PICKUP_SPEED), 0.35)
+            if now - pickup.get("spawned", now) > pickup.get("lifetime", self.PICKUP_LIFETIME):
+                continue
+            active.append(pickup)
+        self.pickups = active
 
     def _check_collisions(self) -> None:
         to_remove_bullets: List[Dict[str, float]] = []
@@ -290,10 +324,13 @@ class Doom2016MiniGame:
             if demon["z"] <= 0.9:
                 if abs(demon["x"] - self.player["x"]) <= demon["size"] * 0.65:
                     to_remove_demons.append(demon)
-                    self._lose_armor()
-                    if self.player["armor"] <= 0:
-                        self._game_over()
-                        return
+                    if self.player["armor"] > 0:
+                        self._lose_armor()
+                    else:
+                        self._lose_health()
+                        if self.player["health"] <= 0:
+                            self._game_over()
+                            return
                 else:
                     to_remove_demons.append(demon)
 
@@ -306,14 +343,77 @@ class Doom2016MiniGame:
             for demon in killed_demons:
                 self.score += 65 + int(demon["size"] * 55)
                 self.kills += 1
+                self._maybe_drop_pickup(demon)
 
         if to_remove_bullets:
             self.bullets = [b for b in self.bullets if b not in to_remove_bullets]
 
     def _lose_armor(self) -> None:
         if self.player["armor"] > 0:
-            self.player["armor"] -= 1
+            self.player["armor"] = max(0, self.player["armor"] - 1)
         self._update_hud()
+
+    def _lose_health(self) -> None:
+        if self.player["health"] > 0:
+            self.player["health"] = max(0, self.player["health"] - self.HEALTH_LOSS_PER_HIT)
+        self._update_hud()
+
+    def _check_pickup_collisions(self) -> None:
+        collected: List[Dict[str, float]] = []
+        for pickup in self.pickups:
+            if pickup["z"] <= 1.0 and abs(pickup["x"] - self.player["x"]) <= pickup.get("size", 1.0) * 0.7:
+                collected.append(pickup)
+
+        if not collected:
+            return
+
+        for pickup in collected:
+            self._collect_pickup(pickup)
+
+        self.pickups = [p for p in self.pickups if p not in collected]
+
+    def _collect_pickup(self, pickup: Dict[str, float]) -> None:
+        pickup_type = pickup.get("type")
+        if pickup_type == "health":
+            before = self.player["health"]
+            self.player["health"] = min(self.MAX_HEALTH, before + self.HEALTH_PICKUP_AMOUNT)
+        else:
+            self._apply_power_up("Haste")
+        self._update_hud()
+
+    def _apply_power_up(self, label: str) -> None:
+        if label == "Haste":
+            self.fire_cooldown = self.FIRE_COOLDOWN * self.HASTE_FIRE_RATE_MULTIPLIER
+            self.bullet_speed = self.BULLET_SPEED * self.HASTE_BULLET_SPEED_MULTIPLIER
+        self.active_power_up = label
+        self.power_up_end_time = time.time() + self.POWER_UP_DURATION
+
+    def _update_power_up_state(self) -> None:
+        if not self.active_power_up:
+            return
+        if time.time() < self.power_up_end_time:
+            return
+
+        self.active_power_up = None
+        self.fire_cooldown = float(self.FIRE_COOLDOWN)
+        self.bullet_speed = float(self.BULLET_SPEED)
+        self.power_up_end_time = 0.0
+
+    def _maybe_drop_pickup(self, demon: Dict[str, float]) -> None:
+        if random.random() > self.PICKUP_DROP_CHANCE:
+            return
+
+        pickup_type = "health" if random.random() < 0.6 else "haste"
+        pickup = {
+            "type": pickup_type,
+            "x": demon["x"] + random.uniform(-0.6, 0.6),
+            "z": max(demon["z"] - 0.5, 2.5),
+            "size": random.uniform(0.6, 1.0),
+            "speed": random.uniform(self.PICKUP_SPEED * 0.6, self.PICKUP_SPEED * 1.4),
+            "spawned": time.time(),
+            "lifetime": self.PICKUP_LIFETIME + random.uniform(-1.5, 1.5),
+        }
+        self.pickups.append(pickup)
 
     # -- Input ---------------------------------------------------------------------
 
@@ -339,7 +439,7 @@ class Doom2016MiniGame:
 
     def _on_fire(self, event: tk.Event) -> None:
         now = time.time() * 1000
-        if now - self.last_fire_time < self.FIRE_COOLDOWN:
+        if now - self.last_fire_time < self.fire_cooldown:
             return
         self.last_fire_time = now
         bullet = {
@@ -360,6 +460,8 @@ class Doom2016MiniGame:
 
         for demon in sorted(self.demons, key=lambda d: d["z"], reverse=True):
             self._draw_demon(demon, tilt_offset)
+        for pickup in sorted(self.pickups, key=lambda p: p["z"], reverse=True):
+            self._draw_pickup(pickup, tilt_offset)
         for bullet in sorted(self.bullets, key=lambda b: b["z"], reverse=True):
             self._draw_bullet(bullet, tilt_offset)
 
@@ -448,6 +550,35 @@ class Doom2016MiniGame:
             width=1,
         )
 
+    def _draw_pickup(self, pickup: Dict[str, float], tilt_offset: float) -> None:
+        screen_x, scale = self._project(pickup["x"], pickup["z"])
+        size = pickup.get("size", 1.0) * scale * 110
+        bottom = self.HEIGHT * 0.86 + tilt_offset * 0.4
+        top = bottom - size * 0.8
+
+        if pickup.get("type") == "health":
+            fill, outline = "#2cc662", "#0f5226"
+        else:
+            fill, outline = "#4e7bff", "#1c2e73"
+
+        self.canvas.create_oval(
+            screen_x - size * 0.35,
+            top,
+            screen_x + size * 0.35,
+            top + size,
+            fill=fill,
+            outline=outline,
+            width=max(2, int(2 + scale * 0.6)),
+        )
+
+        self.canvas.create_text(
+            screen_x,
+            top + size * 0.5,
+            text="✚" if pickup.get("type") == "health" else "⚡",
+            fill="#f0f6ff",
+            font=("Segoe UI", max(8, int(10 + scale * 1.8)), "bold"),
+        )
+
     def _draw_bullet(self, bullet: Dict[str, float], tilt_offset: float) -> None:
         screen_x, scale = self._project(bullet["x"], bullet["z"])
         top = self.horizon_y + tilt_offset - bullet["tilt"] * 60
@@ -474,8 +605,15 @@ class Doom2016MiniGame:
         self.score_var.set(f"Combat Rating: {self.score}")
         self.kills_var.set(f"Demons Eliminated: {self.kills}")
         self.threat_var.set(f"Threat Level: {self.threat_level}")
+        health_percent = int((self.player["health"] / self.MAX_HEALTH) * 100)
+        self.health_var.set(f"Vital Signs: {health_percent}%")
         armor_blocks = "█" * self.player["armor"] + "░" * (self.MAX_ARMOR - self.player["armor"])
         self.armor_var.set(f"Armor Integrity: {armor_blocks}")
+        if self.active_power_up:
+            remaining = max(0.0, self.power_up_end_time - time.time())
+            self.powerup_var.set(f"Power-Up: {self.active_power_up} ({remaining:0.1f}s)")
+        else:
+            self.powerup_var.set("Power-Up: None")
 
     def _game_over(self) -> None:
         if not self.running:
@@ -483,7 +621,7 @@ class Doom2016MiniGame:
         self.running = False
         messagebox.showinfo(
             "Combat Simulator",
-            f"Armor depleted. Final rating {self.score} with {self.kills} demons eliminated.",
+            f"Vital signs lost. Final rating {self.score} with {self.kills} demons eliminated.",
         )
         self.close()
 
