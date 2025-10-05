@@ -20,6 +20,9 @@ class Doom2016MiniGame:
     HEIGHT = 480
     FRAME_MS = 30
     PLAYER_SPEED = 0.28  # world units per frame (strafe)
+    PLAYER_FORWARD_SPEED = 0.26  # world units per frame (advance/retreat)
+    PLAYER_NEAR_LIMIT = 0.65
+    PLAYER_FAR_LIMIT = 5.5
     BULLET_SPEED = 0.9  # world units per frame (forward)
     DEMON_BASE_SPEED = 0.065  # world units per frame (towards player)
     FIRE_COOLDOWN = 180  # ms
@@ -66,7 +69,7 @@ class Doom2016MiniGame:
             header,
             text=(
                 "Step into a holographic arena and eliminate rushing demons. "
-                "Strafe with WASD/arrow keys, space to fire plasma. Esc exits."
+                "Move with WASD/arrow keys, space to fire plasma. Esc exits."
             ),
             style="PanelCaption.TLabel",
             wraplength=self.WIDTH,
@@ -130,6 +133,7 @@ class Doom2016MiniGame:
 
         self.player = {
             "x": 0.0,  # horizontal position in world units
+            "z": 0.9,  # forward position in world units
             "tilt": 0.0,  # pitch offset for the camera
             "armor": self.MAX_ARMOR,
             "health": self.MAX_HEALTH,
@@ -264,6 +268,13 @@ class Doom2016MiniGame:
 
         self.player["x"] = max(-4.5, min(4.5, self.player["x"]))
 
+        if self.input_state["forward"]:
+            self.player["z"] -= self.PLAYER_FORWARD_SPEED
+        if self.input_state["backward"]:
+            self.player["z"] += self.PLAYER_FORWARD_SPEED
+
+        self.player["z"] = max(self.PLAYER_NEAR_LIMIT, min(self.PLAYER_FAR_LIMIT, self.player["z"]))
+
         tilt_target = 0.0
         if self.input_state["forward"]:
             tilt_target = 0.8
@@ -321,7 +332,8 @@ class Doom2016MiniGame:
             if demon in to_remove_demons:
                 continue
 
-            if demon["z"] <= 0.9:
+            distance_to_player = demon["z"] - self.player["z"]
+            if distance_to_player <= 0.25:
                 if abs(demon["x"] - self.player["x"]) <= demon["size"] * 0.65:
                     to_remove_demons.append(demon)
                     if self.player["armor"] > 0:
@@ -333,6 +345,8 @@ class Doom2016MiniGame:
                             return
                 else:
                     to_remove_demons.append(demon)
+            elif distance_to_player < -0.35:
+                to_remove_demons.append(demon)
 
         if to_remove_demons:
             for demon in to_remove_demons:
@@ -361,7 +375,10 @@ class Doom2016MiniGame:
     def _check_pickup_collisions(self) -> None:
         collected: List[Dict[str, float]] = []
         for pickup in self.pickups:
-            if pickup["z"] <= 1.0 and abs(pickup["x"] - self.player["x"]) <= pickup.get("size", 1.0) * 0.7:
+            if (
+                abs(pickup["z"] - self.player["z"]) <= 0.45
+                and abs(pickup["x"] - self.player["x"]) <= pickup.get("size", 1.0) * 0.7
+            ):
                 collected.append(pickup)
 
         if not collected:
@@ -444,7 +461,7 @@ class Doom2016MiniGame:
         self.last_fire_time = now
         bullet = {
             "x": self.player["x"],
-            "z": 1.2,
+            "z": self.player["z"] + 0.3,
             "tilt": self.player["tilt"],
         }
         self.bullets.append(bullet)
@@ -515,14 +532,14 @@ class Doom2016MiniGame:
             outline="",
         )
 
-    def _project(self, x: float, z: float) -> tuple[float, float]:
-        z = max(z, 0.3)
-        scale = self.projection_plane / z
+    def _project(self, x: float, z: float) -> tuple[float, float, float]:
+        relative_z = max(z - self.player["z"], 0.3)
+        scale = self.projection_plane / relative_z
         screen_x = self.WIDTH / 2 + (x - self.player["x"]) * scale * 42
-        return screen_x, scale
+        return screen_x, scale, relative_z
 
     def _draw_demon(self, demon: Dict[str, float], tilt_offset: float) -> None:
-        screen_x, scale = self._project(demon["x"], demon["z"])
+        screen_x, scale, _ = self._project(demon["x"], demon["z"])
         size = demon["size"] * scale * 120
         bottom = self.HEIGHT * 0.86 + tilt_offset * 0.4
         top = bottom - size
@@ -551,7 +568,7 @@ class Doom2016MiniGame:
         )
 
     def _draw_pickup(self, pickup: Dict[str, float], tilt_offset: float) -> None:
-        screen_x, scale = self._project(pickup["x"], pickup["z"])
+        screen_x, scale, _ = self._project(pickup["x"], pickup["z"])
         size = pickup.get("size", 1.0) * scale * 110
         bottom = self.HEIGHT * 0.86 + tilt_offset * 0.4
         top = bottom - size * 0.8
@@ -580,9 +597,9 @@ class Doom2016MiniGame:
         )
 
     def _draw_bullet(self, bullet: Dict[str, float], tilt_offset: float) -> None:
-        screen_x, scale = self._project(bullet["x"], bullet["z"])
+        screen_x, scale, depth = self._project(bullet["x"], bullet["z"])
         top = self.horizon_y + tilt_offset - bullet["tilt"] * 60
-        length = 16 + 42 / max(bullet["z"], 1.2)
+        length = 16 + 42 / max(depth, 0.6)
         self.canvas.create_line(
             screen_x,
             top,
