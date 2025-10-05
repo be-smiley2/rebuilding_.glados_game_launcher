@@ -46,8 +46,14 @@ class ApertureEnrichmentCenterGUI:
             self.update_available = False
             self.last_scan_results: Dict[str, Any] = {}
             self.user_preferences = self.load_preferences()
+            self.theme_mode = self.user_preferences.get("theme_mode", ApertureTheme.current_mode)
+            if self.theme_mode not in ApertureTheme.get_available_modes():
+                self.theme_mode = "dark"
+            self.user_preferences["theme_mode"] = self.theme_mode
+            ApertureTheme.set_mode(self.theme_mode)
             self.smart_mode = True
             self.commentary_mode = tk.StringVar(value="balanced")
+            self.theme_mode_var = tk.StringVar(value=self.theme_mode)
             self.update_status_var = tk.StringVar(value="Status: Idle")
             self.mini_game_summary_var = tk.StringVar(value="Awaiting simulation data.")
             self.sidebar_notebook: Optional[ttk.Notebook] = None
@@ -82,6 +88,8 @@ class ApertureEnrichmentCenterGUI:
                     prefs = json.load(handle)
                     if "last_update_check" not in prefs:
                         prefs["last_update_check"] = 0
+                    if "theme_mode" not in prefs:
+                        prefs["theme_mode"] = "dark"
                     return prefs
         except Exception:
             pass
@@ -90,6 +98,7 @@ class ApertureEnrichmentCenterGUI:
             "auto_sort": True,
             "commentary_level": "balanced",
             "last_update_check": 0,
+            "theme_mode": "dark",
         }
 
     def save_preferences(self) -> None:
@@ -99,14 +108,68 @@ class ApertureEnrichmentCenterGUI:
         except Exception:
             pass
 
-    def setup_gui(self) -> None:
-        self.root.title(f"Aperture Science Enrichment Center - Game Management v{CURRENT_VERSION}")
-        self.root.geometry("1400x900")
-        self.root.minsize(1000, 700)
+    def _apply_theme_to_root(self) -> None:
         self.root.configure(bg=ApertureTheme.PRIMARY_BG)
         self.root.option_add("*TCombobox*Listbox*Background", ApertureTheme.SECONDARY_BG)
         self.root.option_add("*TCombobox*Listbox*Foreground", ApertureTheme.TEXT_PRIMARY)
         self.root.option_add("*TCombobox*Listbox*Font", ApertureTheme.FONT_BASE)
+
+    def _apply_theme_to_text_widgets(self) -> None:
+        try:
+            if hasattr(self, "commentary_text"):
+                previous_state = self.commentary_text.cget("state")
+                if previous_state == "disabled":
+                    self.commentary_text.config(state="normal")
+                self.commentary_text.configure(
+                    bg=ApertureTheme.SECONDARY_BG,
+                    fg=ApertureTheme.TEXT_PRIMARY,
+                    insertbackground=ApertureTheme.TEXT_PRIMARY,
+                )
+                if previous_state == "disabled":
+                    self.commentary_text.config(state="disabled")
+            if hasattr(self, "rec_text"):
+                previous_state = self.rec_text.cget("state")
+                if previous_state == "disabled":
+                    self.rec_text.config(state="normal")
+                self.rec_text.configure(
+                    bg=ApertureTheme.SECONDARY_BG,
+                    fg=ApertureTheme.TEXT_SECONDARY,
+                    insertbackground=ApertureTheme.TEXT_PRIMARY,
+                )
+                if previous_state == "disabled":
+                    self.rec_text.config(state="disabled")
+        except Exception:
+            pass
+
+    def _refresh_theme(self) -> None:
+        self._apply_theme_to_root()
+        self.setup_styles()
+        self._apply_theme_to_text_widgets()
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass
+
+    def set_theme_mode(self, mode: str) -> None:
+        normalized = mode.lower()
+        if normalized not in ApertureTheme.get_available_modes():
+            return
+        if normalized == getattr(self, "theme_mode", ""):
+            return
+
+        self.theme_mode = normalized
+        self.theme_mode_var.set(normalized)
+        self.user_preferences["theme_mode"] = normalized
+        self.save_preferences()
+
+        ApertureTheme.set_mode(normalized)
+        self._refresh_theme()
+
+    def setup_gui(self) -> None:
+        self.root.title(f"Aperture Science Enrichment Center - Game Management v{CURRENT_VERSION}")
+        self.root.geometry("1400x900")
+        self.root.minsize(1000, 700)
+        self._apply_theme_to_root()
 
         try:
             self.root.iconname("Aperture Science")
@@ -114,7 +177,8 @@ class ApertureEnrichmentCenterGUI:
             pass
 
     def setup_styles(self) -> None:
-        self.style = ttk.Style()
+        if not hasattr(self, "style"):
+            self.style = ttk.Style()
         self.style.theme_use("clam")
 
         self.style.configure("Aperture.TFrame", background=ApertureTheme.PRIMARY_BG)
@@ -570,6 +634,37 @@ class ApertureEnrichmentCenterGUI:
             text="Manage diagnostics, updates, and Aperture configuration protocols.",
             style="PanelCaption.TLabel",
         ).pack(anchor="w", pady=(4, 0))
+
+        appearance_panel = ttk.Frame(system_tab, style="Panel.TFrame")
+        appearance_panel.pack(fill="x", padx=10, pady=(0, 10))
+
+        ttk.Label(appearance_panel, text="Appearance", style="PanelBody.TLabel").pack(anchor="w")
+        ttk.Label(
+            appearance_panel,
+            text="Toggle between Aperture dark ops and daylight testing interfaces.",
+            style="PanelCaption.TLabel",
+        ).pack(anchor="w", pady=(2, 0))
+
+        appearance_controls = ttk.Frame(appearance_panel, style="Panel.TFrame")
+        appearance_controls.pack(fill="x", pady=(10, 0))
+
+        ttk.Radiobutton(
+            appearance_controls,
+            text="Dark Mode",
+            value="dark",
+            variable=self.theme_mode_var,
+            command=lambda: self.set_theme_mode("dark"),
+            style="Aperture.TRadiobutton",
+        ).pack(side="left", padx=(0, 16))
+
+        ttk.Radiobutton(
+            appearance_controls,
+            text="Light Mode",
+            value="light",
+            variable=self.theme_mode_var,
+            command=lambda: self.set_theme_mode("light"),
+            style="Aperture.TRadiobutton",
+        ).pack(side="left")
 
         update_panel = ttk.Frame(system_tab, style="Panel.TFrame")
         update_panel.pack(fill="x", padx=10, pady=(0, 10))
