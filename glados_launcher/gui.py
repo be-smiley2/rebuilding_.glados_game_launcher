@@ -564,6 +564,8 @@ class ApertureEnrichmentCenterGUI:
 
         self.mini_game_display = ttk.Frame(display_container, style="Panel.TFrame")
         self.mini_game_display.pack(fill="both", expand=True)
+        self.mini_game_display.pack_propagate(False)
+        self.mini_game_display.configure(width=720, height=720)
 
         self.mini_game_placeholder = ttk.Label(
             self.mini_game_display,
