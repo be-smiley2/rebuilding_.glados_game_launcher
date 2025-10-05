@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from types import SimpleNamespace
+from typing import Optional, Set
 
 try:  # pragma: no cover - exercised only on Windows
     import winreg  # type: ignore
@@ -24,6 +26,53 @@ except ImportError:  # pragma: no cover - Windows only module
 
     winreg = _WinRegStub()  # type: ignore
 
-REQUESTS_AVAILABLE = importlib.util.find_spec("requests") is not None
+# Track installation attempts so we don't recurse endlessly if a package
+# repeatedly fails to install at runtime.
+_ATTEMPTED_INSTALLS: Set[str] = set()
 
-__all__ = ["winreg", "REQUESTS_AVAILABLE"]
+
+def ensure_optional_dependency(
+    module_name: str,
+    package_name: Optional[str] = None,
+    *,
+    auto_install: bool = True,
+) -> bool:
+    """Return ``True`` if ``module_name`` can be imported, installing if needed.
+
+    The helper tries to ``importlib.util.find_spec`` first to avoid the cost of a
+    full import.  If the spec cannot be located and ``auto_install`` is enabled
+    the function will attempt to install ``package_name`` (defaulting to the
+    module name) using ``pip``.  Subsequent failures are memoised so we do not
+    repeatedly invoke ``pip`` on every access.
+    """
+
+    if importlib.util.find_spec(module_name) is not None:
+        return True
+
+    if not auto_install or getattr(sys, "frozen", False):
+        return False
+
+    package = package_name or module_name
+    if package in _ATTEMPTED_INSTALLS:
+        return False
+
+    _ATTEMPTED_INSTALLS.add(package)
+
+    try:
+        print(f"Attempting to install optional dependency '{package}'...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+    except Exception:
+        return False
+
+    return importlib.util.find_spec(module_name) is not None
+
+
+REQUESTS_AVAILABLE = ensure_optional_dependency("requests", auto_install=False)
+PYGLET_AVAILABLE = ensure_optional_dependency("pyglet")
+
+__all__ = [
+    "winreg",
+    "REQUESTS_AVAILABLE",
+    "PYGLET_AVAILABLE",
+    "ensure_optional_dependency",
+]
