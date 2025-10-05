@@ -65,6 +65,52 @@ class AchievementManager:
                 },
             ],
         },
+        "space_invaders": {
+            "title": "Orbital Defense Protocol",
+            "short_title": "Defense Grid",
+            "description": "Hold the firing line against colourful waves of invaders with rapid-fire lasers.",
+            "launch_label": "Launch Orbital Defense",
+            "stat_fields": [
+                "sessions",
+                "best_score",
+                "total_lines",
+                "highest_level",
+                "total_time",
+                "last_played",
+            ],
+            "stats_labels": {
+                "sessions": "Engagements Logged",
+                "best_score": "Best Defense Score",
+                "total_lines": "Invaders Neutralized",
+                "highest_level": "Deepest Wave Reached",
+                "total_time": "Defense Time",
+                "last_played": "Last Deployment",
+            },
+            "summary_template": "Orbital Defense – Best score {best_score} | {total_lines} invaders neutralized | Last deployment {last_played}",
+            "summary_empty": "Orbital Defense – No defense telemetry captured.",
+            "achievements": [
+                {
+                    "id": "first_salvo",
+                    "name": "First Salvo",
+                    "description": "Complete your initial orbital defense run.",
+                },
+                {
+                    "id": "rapid_response",
+                    "name": "Rapid Response",
+                    "description": "Neutralize 50 invaders across all sessions.",
+                },
+                {
+                    "id": "stellar_barrage",
+                    "name": "Stellar Barrage",
+                    "description": "Achieve a defense score of 1,500 in a single session.",
+                },
+                {
+                    "id": "orbital_champion",
+                    "name": "Orbital Champion",
+                    "description": "Reach wave 5 or beyond in a single session.",
+                },
+            ],
+        },
     }
 
     def load_user_achievements(self) -> Dict:
@@ -162,6 +208,15 @@ class AchievementManager:
             if achievement_id == "line_specialist":
                 return stats.get("total_lines", 0) >= 25
             if achievement_id == "impeccable_alignment":
+                return stats.get("highest_level", 1) >= 5
+        if game_key == "space_invaders":
+            if achievement_id == "first_salvo":
+                return stats.get("sessions", 0) >= 1 and not stats.get("last_aborted", False)
+            if achievement_id == "rapid_response":
+                return stats.get("total_lines", 0) >= 50
+            if achievement_id == "stellar_barrage":
+                return stats.get("best_score", 0) >= 1500
+            if achievement_id == "orbital_champion":
                 return stats.get("highest_level", 1) >= 5
         return False
 
