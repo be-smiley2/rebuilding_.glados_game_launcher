@@ -18,7 +18,7 @@ from .launcher import GameLauncher
 from .scanner import SmartGameScanner
 from .theme import ApertureTheme
 from .tetris import TrainTetrisGame
-from .doom import Doom2016MiniGame
+from .doom import Doom3DMiniGame, SessionSnapshot
 from .updates import AutoUpdateManager, UpdateApplyResult, UpdateCheckResult
 from .dependencies import REQUESTS_AVAILABLE
 
@@ -68,7 +68,7 @@ class ApertureEnrichmentCenterGUI:
             self.check_updates_button: Optional[ttk.Button] = None
             self.apply_update_button: Optional[ttk.Button] = None
             self.tetris: Optional[TrainTetrisGame] = None
-            self.doom_training: Optional[Doom2016MiniGame] = None
+            self.doom_training: Optional[Doom3DMiniGame] = None
 
             print("Setting up GUI...")
             self.setup_gui()
@@ -1681,21 +1681,34 @@ class ApertureEnrichmentCenterGUI:
     def show_doom_training(self) -> None:
         if (
             hasattr(self, "doom_training")
-            and isinstance(self.doom_training, Doom2016MiniGame)
+            and isinstance(self.doom_training, Doom3DMiniGame)
             and self.doom_training.is_open
         ):
             self.doom_training.focus()
             return
 
-        self.doom_training = Doom2016MiniGame(
+        self.doom_training = Doom3DMiniGame(
             self.root,
             on_close=self._handle_doom_closed,
+            on_snapshot=self._handle_doom_snapshot,
             achievement_manager=self.achievement_manager,
         )
 
     def _handle_doom_closed(self) -> None:
         self.doom_training = None
         self.update_mini_game_panel()
+
+    def _handle_doom_snapshot(self, snapshot: SessionSnapshot) -> None:
+        summary = (
+            "DOOM 3D – Rating {score} | {kills} demons neutralised | "
+            "Threat {threat} | Armor {armor}".format(
+                score=snapshot.score,
+                kills=snapshot.kills,
+                threat=snapshot.threat_level,
+                armor=snapshot.armor,
+            )
+        )
+        self.mini_game_summary_var.set(summary)
 
     def check_for_updates(self) -> None:
         if self.update_check_in_progress:
