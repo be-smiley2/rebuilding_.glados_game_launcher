@@ -68,11 +68,9 @@ def ensure_optional_dependency(
 
 
 REQUESTS_AVAILABLE = ensure_optional_dependency("requests", auto_install=False)
-PYGLET_AVAILABLE = ensure_optional_dependency("pyglet")
 
 __all__ = [
     "winreg",
     "REQUESTS_AVAILABLE",
-    "PYGLET_AVAILABLE",
     "ensure_optional_dependency",
 ]
