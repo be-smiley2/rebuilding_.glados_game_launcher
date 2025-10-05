@@ -20,7 +20,11 @@ from .theme import ApertureTheme
 from .tetris import TrainTetrisGame
 from .doom import Doom2016MiniGame
 from .updates import AutoUpdateManager, UpdateApplyResult, UpdateCheckResult
+<<<<<<< HEAD
 from .dependencies import REQUESTS_AVAILABLE, PYGLET_AVAILABLE
+=======
+from .dependencies import REQUESTS_AVAILABLE, ensure_pyglet
+>>>>>>> d8f0ee082c5b33c62e19510008cec4ac784ff659
 
 
 class ApertureEnrichmentCenterGUI:
@@ -1623,8 +1627,17 @@ class ApertureEnrichmentCenterGUI:
             summary_var = getattr(self, "mini_game_summary_var", None)
             if summary_var is not None:
                 summary_text = " | ".join(summary_parts).strip()
+<<<<<<< HEAD
                 if not PYGLET_AVAILABLE:
                     extra_note = "DOOM 2016 – Install pyglet to enable the 3D simulator."
+=======
+                if not ensure_pyglet(auto_install=False):
+                    extra_note = (
+                        "DOOM 2016 – pyglet will auto-install when first launched. "
+                        "If it fails, install manually with 'pip install pyglet' or "
+                        "'python -m pip install -r requirements-3d.txt'."
+                    )
+>>>>>>> d8f0ee082c5b33c62e19510008cec4ac784ff659
                     summary_text = (
                         f"{summary_text} | {extra_note}" if summary_text else extra_note
                     )
@@ -1684,11 +1697,21 @@ class ApertureEnrichmentCenterGUI:
         self.update_mini_game_panel()
 
     def show_doom_training(self) -> None:
+<<<<<<< HEAD
         if not PYGLET_AVAILABLE:
             messagebox.showwarning(
                 "3D Engine Unavailable",
                 "The DOOM simulator requires the optional 'pyglet' package.\n"
                 "Install it with 'pip install pyglet' and relaunch the training module.",
+=======
+        if not ensure_pyglet(auto_install=True):
+            messagebox.showwarning(
+                "3D Engine Unavailable",
+                "The DOOM simulator requires the optional 'pyglet' package.\n"
+                "The launcher attempted to install it automatically but the engine"
+                " is still unavailable. Install it manually with 'pip install pyglet' or\n"
+                "'python -m pip install -r requirements-3d.txt' and relaunch the training module.",
+>>>>>>> d8f0ee082c5b33c62e19510008cec4ac784ff659
             )
             return
 

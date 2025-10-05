@@ -12,9 +12,17 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from .achievements import AchievementManager
+<<<<<<< HEAD
 from .dependencies import PYGLET_AVAILABLE
 from .theme import ApertureTheme
 
+=======
+from .dependencies import ensure_pyglet
+from .theme import ApertureTheme
+
+PYGLET_AVAILABLE = ensure_pyglet(auto_install=True)
+
+>>>>>>> d8f0ee082c5b33c62e19510008cec4ac784ff659
 if PYGLET_AVAILABLE:  # pragma: no cover - requires OpenGL context
     import pyglet
     from pyglet import gl
@@ -624,7 +632,12 @@ class Doom2016MiniGame:
             messagebox.showwarning(
                 "Dependency Missing",
                 "The pyglet package is required to run the 3D simulator.\n"
+<<<<<<< HEAD
                 "Install it with 'pip install pyglet' and relaunch the mini-game.",
+=======
+                "Install it with 'pip install pyglet' or\n"
+                "'python -m pip install -r requirements-3d.txt' and relaunch the mini-game.",
+>>>>>>> d8f0ee082c5b33c62e19510008cec4ac784ff659
             )
             self.status_var.set("Simulator unavailable: pyglet package not installed.")
             self.window.after(100, self.close)
