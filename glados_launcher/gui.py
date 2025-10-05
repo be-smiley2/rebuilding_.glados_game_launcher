@@ -559,6 +559,21 @@ class ApertureEnrichmentCenterGUI:
             width=22,
         ).pack(side="left", padx=(10, 0))
 
+        display_container = ttk.Frame(mini_games_tab, style="Panel.TFrame")
+        display_container.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        self.mini_game_display = ttk.Frame(display_container, style="Panel.TFrame")
+        self.mini_game_display.pack(fill="both", expand=True)
+
+        self.mini_game_placeholder = ttk.Label(
+            self.mini_game_display,
+            text="No simulation active. Launch the training module to begin.",
+            style="PanelBody.TLabel",
+            anchor="center",
+            justify="center",
+        )
+        self.mini_game_placeholder.pack(expand=True, fill="both", padx=20, pady=20)
+
         system_tab = ttk.Frame(notebook, style="Panel.TFrame")
         notebook.add(system_tab, text="System Options")
         self.system_tab = system_tab
@@ -1458,19 +1473,35 @@ class ApertureEnrichmentCenterGUI:
             pass
 
     def show_tetris(self) -> None:
-        if hasattr(self, "tetris") and isinstance(self.tetris, TrainTetrisGame) and self.tetris.is_open:
-            self.tetris.focus()
+        self.focus_mini_games_lab()
+
+        existing = getattr(self, "tetris", None)
+        if isinstance(existing, TrainTetrisGame) and existing.is_open:
+            existing.focus()
             return
+
+        if getattr(self, "mini_game_placeholder", None) is not None:
+            try:
+                self.mini_game_placeholder.pack_forget()
+            except Exception:
+                pass
 
         self.tetris = TrainTetrisGame(
             self.root,
             on_close=self._handle_tetris_closed,
             achievement_manager=self.achievement_manager,
+            parent=getattr(self, "mini_game_display", None),
         )
+        self.tetris.focus()
 
     def _handle_tetris_closed(self) -> None:
         self.tetris = None
         self.update_mini_game_panel()
+        if getattr(self, "mini_game_placeholder", None) is not None:
+            try:
+                self.mini_game_placeholder.pack(expand=True, fill="both", padx=20, pady=20)
+            except Exception:
+                pass
 
     def check_for_updates(self) -> None:
         if self.update_check_in_progress:

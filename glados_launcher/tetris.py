@@ -88,24 +88,34 @@ class TrainTetrisGame:
         root: tk.Tk,
         on_close: Optional[callable] = None,
         achievement_manager: Optional[AchievementManager] = None,
+        parent: Optional[tk.Widget] = None,
     ):
         self.root = root
+        self.parent = parent
         self.on_close = on_close
         self.achievement_manager = achievement_manager
-        self.window = tk.Toplevel(root)
-        self.window.title("Train Yard Simulation")
-        self.window.configure(bg=ApertureTheme.PRIMARY_BG)
-        self.window.geometry("420x720")
-        self.window.transient(root)
-        self.window.protocol("WM_DELETE_WINDOW", self.close)
+        self.window: Optional[tk.Toplevel] = None
+        self._embedded = parent is not None
 
-        container = ttk.Frame(self.window, style="Panel.TFrame")
-        container.pack(fill="both", expand=True, padx=20, pady=20)
+        if self._embedded:
+            host = parent or root
+            self.container = ttk.Frame(host, style="Panel.TFrame")
+            self.container.pack(fill="both", expand=True, padx=20, pady=20)
+        else:
+            self.window = tk.Toplevel(root)
+            self.window.title("Train Yard Simulation")
+            self.window.configure(bg=ApertureTheme.PRIMARY_BG)
+            self.window.geometry("420x720")
+            self.window.transient(root)
+            self.window.protocol("WM_DELETE_WINDOW", self.close)
+
+            self.container = ttk.Frame(self.window, style="Panel.TFrame")
+            self.container.pack(fill="both", expand=True, padx=20, pady=20)
 
         board_width = self.COLS * self.TILE_SIZE
         board_height = self.ROWS * self.TILE_SIZE
 
-        info_frame = ttk.Frame(container, style="Panel.TFrame")
+        info_frame = ttk.Frame(self.container, style="Panel.TFrame")
         info_frame.pack(fill="x", pady=(0, 10))
 
         self.info_var = tk.StringVar()
@@ -117,16 +127,17 @@ class TrainTetrisGame:
         ttk.Label(info_frame, textvariable=self.next_var, style="Wheatley.TLabel").pack(anchor="w", pady=(4, 0))
 
         self.canvas = tk.Canvas(
-            container,
+            self.container,
             width=board_width,
             height=board_height,
             bg=ApertureTheme.SECONDARY_BG,
             highlightthickness=0,
+            takefocus=True,
         )
         self.canvas.pack()
 
         ttk.Label(
-            container,
+            self.container,
             text="Controls: ← → move | ↑ rotate | ↓ nudge down | Space hard drop | Esc exit",
             style="Aperture.TLabel",
         ).pack(anchor="center", pady=(10, 0))
@@ -153,23 +164,40 @@ class TrainTetrisGame:
             self._render()
             self._schedule_tick()
 
-        self.window.bind("<Left>", lambda event: self._attempt_move(-1, 0))
-        self.window.bind("<Right>", lambda event: self._attempt_move(1, 0))
-        self.window.bind("<Down>", lambda event: self._soft_drop())
-        self.window.bind("<Up>", lambda event: self._rotate())
-        self.window.bind("<space>", lambda event: self._hard_drop())
-        self.window.bind("<Escape>", lambda event: self.close())
-        self.window.after(100, self.window.focus_force)
+        bindings = {
+            "<Left>": lambda _: self._attempt_move(-1, 0),
+            "<Right>": lambda _: self._attempt_move(1, 0),
+            "<Down>": lambda _: self._soft_drop(),
+            "<Up>": lambda _: self._rotate(),
+            "<space>": lambda _: self._hard_drop(),
+            "<Escape>": lambda _: self.close(),
+        }
+        for sequence, handler in bindings.items():
+            self.canvas.bind(sequence, handler)
+
+        self.canvas.focus_set()
+        if self.window is not None:
+            self.window.after(100, self.canvas.focus_set)
 
     @property
     def is_open(self) -> bool:
-        return not self._closed and self.window.winfo_exists()
+        if self._closed:
+            return False
+        if self.window is not None:
+            return self.window.winfo_exists()
+        return bool(self.container.winfo_exists())
 
     def focus(self) -> None:
-        if self.window.winfo_exists():
-            self.window.deiconify()
-            self.window.lift()
-            self.window.focus_force()
+        if self.window is not None:
+            if self.window.winfo_exists():
+                self.window.deiconify()
+                self.window.lift()
+                self.window.focus_force()
+        if self.canvas.winfo_exists():
+            try:
+                self.canvas.focus_set()
+            except Exception:
+                pass
 
     def close(self) -> None:
         if self._closed:
@@ -179,7 +207,7 @@ class TrainTetrisGame:
         self.running = False
         if self.after_handle is not None:
             try:
-                self.window.after_cancel(self.after_handle)
+                self.root.after_cancel(self.after_handle)
             except Exception:
                 pass
             self.after_handle = None
@@ -189,8 +217,10 @@ class TrainTetrisGame:
                 self.on_close()
             except Exception:
                 pass
-        if self.window.winfo_exists():
+        if self.window is not None and self.window.winfo_exists():
             self.window.destroy()
+        elif self.container.winfo_exists():
+            self.container.destroy()
 
     def _create_piece(self) -> Dict[str, Any]:
         shape = random.choice(self.PIECES)
@@ -228,7 +258,7 @@ class TrainTetrisGame:
         if not self.running:
             return
         interval = max(120, self.BASE_DROP_MS - (self.level - 1) * self.LEVEL_DROP_DELTA)
-        self.after_handle = self.window.after(interval, self._tick)
+        self.after_handle = self.root.after(interval, self._tick)
 
     def _tick(self) -> None:
         if not self.running:
