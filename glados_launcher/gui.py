@@ -18,6 +18,7 @@ from .launcher import GameLauncher
 from .scanner import SmartGameScanner
 from .theme import ApertureTheme
 from .tetris import TrainTetrisGame
+from .doom import Doom2016MiniGame
 from .updates import AutoUpdateManager, UpdateApplyResult, UpdateCheckResult
 from .dependencies import REQUESTS_AVAILABLE
 
@@ -56,11 +57,18 @@ class ApertureEnrichmentCenterGUI:
             self.theme_mode_var = tk.StringVar(value=self.theme_mode)
             self.update_status_var = tk.StringVar(value="Status: Idle")
             self.mini_game_summary_var = tk.StringVar(value="Awaiting simulation data.")
+            self.mini_game_configs = [
+                {"key": "train_tetris", "launcher": self.show_tetris},
+                {"key": "doom_slayer_training", "launcher": self.show_doom_training},
+            ]
+            self.mini_game_stats_vars: Dict[str, Dict[str, tk.StringVar]] = {}
             self.sidebar_notebook: Optional[ttk.Notebook] = None
             self.mini_games_tab: Optional[ttk.Frame] = None
             self.system_tab: Optional[ttk.Frame] = None
             self.check_updates_button: Optional[ttk.Button] = None
             self.apply_update_button: Optional[ttk.Button] = None
+            self.tetris: Optional[TrainTetrisGame] = None
+            self.doom_training: Optional[Doom2016MiniGame] = None
 
             print("Setting up GUI...")
             self.setup_gui()
@@ -576,42 +584,115 @@ class ApertureEnrichmentCenterGUI:
         ).pack(anchor="w", pady=(4, 0))
         ttk.Label(lab_header, textvariable=self.mini_game_summary_var, style="PanelBody.TLabel").pack(anchor="w", pady=(8, 0))
 
-        stats_frame = ttk.Frame(mini_games_tab, style="Panel.TFrame")
-        stats_frame.pack(fill="x", padx=10, pady=(0, 10))
+        stats_container = ttk.Frame(mini_games_tab, style="Panel.TFrame")
+        stats_container.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
-        self.mini_game_stats_vars: Dict[str, tk.StringVar] = {}
-        stats_config = [
-            ("sessions", "Sessions"),
-            ("best_score", "Best Score"),
-            ("total_lines", "Total Lines"),
-            ("highest_level", "Highest Level"),
-            ("total_time", "Total Time"),
-            ("last_played", "Last Attempt"),
+        stats_canvas = tk.Canvas(
+            stats_container,
+            bg=ApertureTheme.PANEL_BG,
+            highlightthickness=0,
+            relief="flat",
+        )
+        stats_scrollbar = ttk.Scrollbar(stats_container, orient="vertical", command=stats_canvas.yview)
+        stats_canvas.configure(yscrollcommand=stats_scrollbar.set)
+
+        stats_scrollable = ttk.Frame(stats_canvas, style="Panel.TFrame")
+
+        def _sync_scrollregion(event: tk.Event) -> None:
+            stats_canvas.configure(scrollregion=stats_canvas.bbox("all"))
+
+        stats_scrollable.bind("<Configure>", _sync_scrollregion)
+        stats_canvas.create_window((0, 0), window=stats_scrollable, anchor="nw")
+
+        stats_canvas.pack(side="left", fill="both", expand=True)
+        stats_scrollbar.pack(side="right", fill="y")
+
+        def _on_mousewheel(event: tk.Event) -> None:
+            if event.delta:
+                stats_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            elif event.num == 4:
+                stats_canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                stats_canvas.yview_scroll(1, "units")
+
+        def _bind_mousewheel(_: tk.Event) -> None:
+            stats_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            stats_canvas.bind_all("<Button-4>", _on_mousewheel)
+            stats_canvas.bind_all("<Button-5>", _on_mousewheel)
+
+        def _unbind_mousewheel(_: tk.Event) -> None:
+            stats_canvas.unbind_all("<MouseWheel>")
+            stats_canvas.unbind_all("<Button-4>")
+            stats_canvas.unbind_all("<Button-5>")
+
+        stats_scrollable.bind("<Enter>", _bind_mousewheel)
+        stats_scrollable.bind("<Leave>", _unbind_mousewheel)
+
+        self.mini_game_stats_vars.clear()
+        default_fields = [
+            "sessions",
+            "best_score",
+            "total_lines",
+            "highest_level",
+            "total_time",
+            "last_played",
         ]
 
-        for key, label in stats_config:
-            var = tk.StringVar(value=f"{label}: …")
-            self.mini_game_stats_vars[key] = var
-            ttk.Label(stats_frame, textvariable=var, style="MiniStats.TLabel").pack(anchor="w")
+        for config in self.mini_game_configs:
+            definition = self.achievement_manager.get_mini_game_definition(config["key"])
+            card = ttk.Frame(stats_scrollable, style="Panel.TFrame")
+            card.pack(fill="x", padx=0, pady=(0, 12))
+
+            ttk.Label(card, text=definition.get("title", config["key"]), style="PanelBody.TLabel").pack(anchor="w")
+            description = definition.get("description")
+            if description:
+                ttk.Label(
+                    card,
+                    text=description,
+                    style="PanelCaption.TLabel",
+                    wraplength=520,
+                ).pack(anchor="w", pady=(2, 6))
+
+            stats_vars: Dict[str, tk.StringVar] = {}
+            stat_fields = definition.get("stat_fields", default_fields)
+            stats_labels = definition.get("stats_labels", {})
+            for field in stat_fields:
+                label_text = stats_labels.get(field, field.replace("_", " ").title())
+                var = tk.StringVar(value=f"{label_text}: …")
+                stats_vars[field] = var
+                ttk.Label(card, textvariable=var, style="MiniStats.TLabel").pack(anchor="w")
+
+            button_row = ttk.Frame(card, style="Panel.TFrame")
+            button_row.pack(fill="x", pady=(8, 0))
+
+            ttk.Button(
+                button_row,
+                text=definition.get("launch_label", "Launch Simulation"),
+                style="GLaDOS.TButton",
+                command=config["launcher"],
+                width=26,
+            ).pack(side="left")
+
+            ttk.Button(
+                button_row,
+                text="View Achievements",
+                style="Aperture.TButton",
+                command=lambda key=config["key"]: self.show_mini_game_details(key),
+                width=22,
+            ).pack(side="left", padx=(10, 0))
+
+            self.mini_game_stats_vars[config["key"]] = stats_vars
 
         action_frame = ttk.Frame(mini_games_tab, style="Panel.TFrame")
         action_frame.pack(fill="x", padx=10, pady=(0, 10))
 
         ttk.Button(
             action_frame,
-            text="Launch Simulation",
-            style="GLaDOS.TButton",
-            command=self.show_tetris,
-            width=20,
-        ).pack(side="left")
-
-        ttk.Button(
-            action_frame,
-            text="View Achievements",
+            text="Mini-Game Overview",
             style="Aperture.TButton",
             command=self.show_mini_games,
-            width=20,
-        ).pack(side="left", padx=(10, 0))
+            width=22,
+        ).pack(side="left")
 
         ttk.Button(
             action_frame,
@@ -1108,10 +1189,16 @@ class ApertureEnrichmentCenterGUI:
             messagebox.showerror("Error", f"Achievement analysis error: {exc}")
 
     def show_mini_games(self) -> None:
+        self._open_mini_game_dialog()
+
+    def show_mini_game_details(self, game_key: str) -> None:
+        self._open_mini_game_dialog(selected_key=game_key)
+
+    def _open_mini_game_dialog(self, selected_key: Optional[str] = None) -> None:
         self.focus_mini_games_lab()
         dialog = tk.Toplevel(self.root)
         dialog.title("Aperture Mini-Games")
-        dialog.geometry("600x520")
+        dialog.geometry("680x560")
         dialog.configure(bg=ApertureTheme.PRIMARY_BG)
         dialog.transient(self.root)
 
@@ -1128,77 +1215,98 @@ class ApertureEnrichmentCenterGUI:
         content_frame = ttk.Frame(dialog, style="Panel.TFrame")
         content_frame.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
-        stats = self.achievement_manager.get_mini_game_stats("train_tetris")
-        achievements = self.achievement_manager.get_mini_game_achievements("train_tetris")
+        notebook = ttk.Notebook(content_frame, style="Aperture.TNotebook")
+        notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
-        stats_frame = ttk.Frame(content_frame, style="Panel.TFrame")
-        stats_frame.pack(fill="x", padx=15, pady=15)
+        tab_lookup: Dict[str, ttk.Frame] = {}
 
-        total_minutes = stats.get("total_time", 0.0) / 60.0
-        last_played_ts = stats.get("last_played")
-        if last_played_ts:
-            last_played = time.strftime("%Y-%m-%d %H:%M", time.localtime(last_played_ts))
-        else:
-            last_played = "Never"
+        for config in self.mini_game_configs:
+            key = config["key"]
+            definition = self.achievement_manager.get_mini_game_definition(key)
+            stats = self.achievement_manager.get_mini_game_stats(key)
+            achievements = self.achievement_manager.get_mini_game_achievements(key)
 
-        stats_lines = [
-            f"Simulation Sessions: {stats.get('sessions', 0)}",
-            f"Best Score: {stats.get('best_score', 0)}",
-            f"Total Lines Cleared: {stats.get('total_lines', 0)}",
-            f"Highest Level Achieved: {stats.get('highest_level', 1)}",
-            f"Lab Time Invested: {total_minutes:.1f} minutes",
-            f"Last Attempt: {last_played}",
-        ]
+            tab = ttk.Frame(notebook, style="Panel.TFrame")
+            notebook.add(tab, text=definition.get("short_title", definition.get("title", key)))
+            tab_lookup[key] = tab
 
-        ttk.Label(stats_frame, text="Train Yard Simulation Stats", style="PanelTitle.TLabel").pack(anchor="w")
-        for line in stats_lines:
-            ttk.Label(stats_frame, text=line, style="MiniStats.TLabel").pack(anchor="w", pady=(4, 0))
+            ttk.Label(tab, text=definition.get("title", key), style="PanelTitle.TLabel").pack(anchor="w", padx=15, pady=(12, 4))
+            description = definition.get("description")
+            if description:
+                ttk.Label(
+                    tab,
+                    text=description,
+                    style="PanelCaption.TLabel",
+                    wraplength=560,
+                ).pack(anchor="w", padx=15)
 
-        ach_frame = ttk.Frame(content_frame, style="Panel.TFrame")
-        ach_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+            stat_fields = definition.get("stat_fields", []) or [
+                "sessions",
+                "best_score",
+                "total_lines",
+                "highest_level",
+                "total_time",
+                "last_played",
+            ]
+            stats_labels = definition.get("stats_labels", {})
 
-        ttk.Label(ach_frame, text="Achievement Protocols", style="PanelTitle.TLabel").pack(anchor="w")
+            stats_frame = ttk.Frame(tab, style="Panel.TFrame")
+            stats_frame.pack(fill="x", padx=15, pady=(12, 10))
+            ttk.Label(stats_frame, text="Simulation Stats", style="PanelBody.TLabel").pack(anchor="w")
 
-        if achievements:
-            for achievement in achievements:
-                status = "✔" if achievement.get("earned") else "○"
-                text = f"{status} {achievement['name']}"
-                ttk.Label(ach_frame, text=text, style="PanelBody.TLabel").pack(anchor="w", pady=(6, 0))
+            for field in stat_fields:
+                label = stats_labels.get(field, field.replace("_", " ").title())
+                value = self._format_mini_game_value(field, stats)
+                ttk.Label(stats_frame, text=f"{label}: {value}", style="MiniStats.TLabel").pack(anchor="w", pady=(3, 0))
+
+            ach_frame = ttk.Frame(tab, style="Panel.TFrame")
+            ach_frame.pack(fill="both", expand=True, padx=15, pady=(0, 10))
+            ttk.Label(ach_frame, text="Achievement Protocols", style="PanelBody.TLabel").pack(anchor="w")
+
+            if achievements:
+                for achievement in achievements:
+                    status = "✔" if achievement.get("earned") else "○"
+                    text = f"{status} {achievement['name']}"
+                    ttk.Label(ach_frame, text=text, style="PanelBody.TLabel").pack(anchor="w", pady=(6, 0))
+                    ttk.Label(
+                        ach_frame,
+                        text=f"    {achievement['description']}",
+                        style="PanelCaption.TLabel" if achievement.get("earned") else "PanelBody.TLabel",
+                    ).pack(anchor="w")
+            else:
                 ttk.Label(
                     ach_frame,
-                    text=f"    {achievement['description']}",
-                    style="PanelCaption.TLabel" if achievement.get("earned") else "PanelBody.TLabel",
-                ).pack(anchor="w")
-        else:
-            ttk.Label(
-                ach_frame,
-                text="No experimental achievements defined yet.",
-                style="PanelBody.TLabel",
-            ).pack(anchor="w", pady=10)
+                    text="No experimental achievements defined yet.",
+                    style="PanelBody.TLabel",
+                ).pack(anchor="w", pady=10)
 
-        button_frame = ttk.Frame(content_frame, style="Panel.TFrame")
-        button_frame.pack(fill="x", padx=15, pady=(0, 15))
+            button_row = ttk.Frame(tab, style="Panel.TFrame")
+            button_row.pack(fill="x", padx=15, pady=(10, 10))
 
-        def launch_tetris() -> None:
-            if dialog.winfo_exists():
-                dialog.destroy()
-            self.show_tetris()
+            def launch_game(launcher=config["launcher"], dlg=dialog) -> None:
+                if dlg.winfo_exists():
+                    dlg.destroy()
+                launcher()
 
-        ttk.Button(
-            button_frame,
-            text="Launch Train Yard Simulation",
-            style="GLaDOS.TButton",
-            command=launch_tetris,
-            width=28,
-        ).pack(side="left", padx=(0, 10))
+            ttk.Button(
+                button_row,
+                text=definition.get("launch_label", "Launch Simulation"),
+                style="GLaDOS.TButton",
+                command=launch_game,
+                width=28,
+            ).pack(side="left", padx=(0, 10))
 
-        ttk.Button(
-            button_frame,
-            text="Close",
-            style="Aperture.TButton",
-            command=dialog.destroy,
-            width=12,
-        ).pack(side="left")
+            ttk.Button(
+                button_row,
+                text="Close",
+                style="Aperture.TButton",
+                command=dialog.destroy,
+                width=12,
+            ).pack(side="left")
+
+        if selected_key and selected_key in tab_lookup:
+            notebook.select(tab_lookup[selected_key])
+
 
     def show_achievement_summary(self) -> None:
         dialog = tk.Toplevel(self.root)
@@ -1496,45 +1604,50 @@ class ApertureEnrichmentCenterGUI:
 
     def update_mini_game_panel(self) -> None:
         try:
-            stats = self.achievement_manager.get_mini_game_stats("train_tetris")
+            summary_parts = []
 
-            total_minutes = stats.get("total_time", 0.0) / 60.0
-            last_played_ts = stats.get("last_played")
-            if last_played_ts:
-                last_played = time.strftime("%Y-%m-%d %H:%M", time.localtime(last_played_ts))
-            else:
-                last_played = "Never"
+            for config in self.mini_game_configs:
+                key = config["key"]
+                stats = self.achievement_manager.get_mini_game_stats(key)
+                definition = self.achievement_manager.get_mini_game_definition(key)
+                stats_vars = self.mini_game_stats_vars.get(key, {})
+                labels = definition.get("stats_labels", {})
 
-            display_values = {
-                "sessions": f"Sessions: {stats.get('sessions', 0)}",
-                "best_score": f"Best Score: {stats.get('best_score', 0)}",
-                "total_lines": f"Total Lines: {stats.get('total_lines', 0)}",
-                "highest_level": f"Highest Level: {stats.get('highest_level', 1)}",
-                "total_time": f"Total Time: {total_minutes:.1f} min",
-                "last_played": f"Last Attempt: {last_played}",
-            }
+                for field, var in stats_vars.items():
+                    label = labels.get(field, field.replace("_", " ").title())
+                    value = self._format_mini_game_value(field, stats)
+                    var.set(f"{label}: {value}")
 
-            for key, value in display_values.items():
-                var = getattr(self, "mini_game_stats_vars", {}).get(key)
-                if var is not None:
-                    var.set(value)
+                summary_parts.append(self.achievement_manager.format_mini_game_summary(key, stats))
 
             summary_var = getattr(self, "mini_game_summary_var", None)
             if summary_var is not None:
-                if stats.get("sessions", 0) == 0:
-                    summary_var.set("No simulation data recorded. Launch the training module to begin telemetry.")
+                summary_text = " | ".join(summary_parts).strip()
+                if summary_text:
+                    summary_var.set(summary_text)
                 else:
-                    summary_var.set(
-                        " | ".join(
-                            [
-                                f"Best score {stats.get('best_score', 0)}",
-                                f"{stats.get('total_lines', 0)} lines cleared",
-                                f"Last attempt {last_played}",
-                            ]
-                        )
-                    )
+                    summary_var.set("No simulation data recorded. Launch a training module to begin telemetry.")
         except Exception:
             pass
+
+    def _format_mini_game_value(self, field: str, stats: Dict[str, Any]) -> str:
+        if field == "total_time":
+            total_minutes = stats.get("total_time", 0.0) / 60.0
+            return f"{total_minutes:.1f} min"
+        if field == "last_played":
+            timestamp = stats.get("last_played")
+            if timestamp:
+                try:
+                    return time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp))
+                except Exception:
+                    return "Recently"
+            return "Never"
+        if field in {"sessions", "best_score", "total_lines", "highest_level", "best_armor", "last_lines", "last_level", "last_score", "last_armor"}:
+            return str(stats.get(field, 0))
+        value = stats.get(field)
+        if isinstance(value, float):
+            return f"{value:.1f}"
+        return str(value) if value is not None else "…"
 
     def focus_mini_games_lab(self) -> None:
         try:
@@ -1563,6 +1676,25 @@ class ApertureEnrichmentCenterGUI:
 
     def _handle_tetris_closed(self) -> None:
         self.tetris = None
+        self.update_mini_game_panel()
+
+    def show_doom_training(self) -> None:
+        if (
+            hasattr(self, "doom_training")
+            and isinstance(self.doom_training, Doom2016MiniGame)
+            and self.doom_training.is_open
+        ):
+            self.doom_training.focus()
+            return
+
+        self.doom_training = Doom2016MiniGame(
+            self.root,
+            on_close=self._handle_doom_closed,
+            achievement_manager=self.achievement_manager,
+        )
+
+    def _handle_doom_closed(self) -> None:
+        self.doom_training = None
         self.update_mini_game_panel()
 
     def check_for_updates(self) -> None:
