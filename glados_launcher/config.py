@@ -57,11 +57,10 @@ else:
 FIRST_RUN_FLAG = SCRIPT_DIR / ".aperture_first_run_complete"
 GAME_DATA_FILE = SCRIPT_DIR / "game_data.json"
 USER_PREFS_FILE = SCRIPT_DIR / "user_preferences.json"
-ICON_CACHE_DIR = SCRIPT_DIR / "icon_cache"
 ACHIEVEMENT_CACHE_DIR = SCRIPT_DIR / "achievement_cache"
 
 # Ensure persistent directories exist
-for directory in (ICON_CACHE_DIR, ACHIEVEMENT_CACHE_DIR):
+for directory in (ACHIEVEMENT_CACHE_DIR,):
     try:
         directory.mkdir(exist_ok=True)
     except Exception:
@@ -75,6 +74,5 @@ __all__ = [
     "FIRST_RUN_FLAG",
     "GAME_DATA_FILE",
     "USER_PREFS_FILE",
-    "ICON_CACHE_DIR",
     "ACHIEVEMENT_CACHE_DIR",
 ]

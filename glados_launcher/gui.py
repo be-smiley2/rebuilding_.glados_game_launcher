@@ -14,7 +14,6 @@ from tkinter import messagebox, scrolledtext, simpledialog, ttk
 from .achievements import AchievementManager
 from .config import CURRENT_SCRIPT, CURRENT_VERSION, USER_PREFS_FILE
 from .data_manager import GameDataManager
-from .icons import GameIconManager
 from .launcher import GameLauncher
 from .scanner import SmartGameScanner
 from .theme import ApertureTheme
@@ -38,7 +37,6 @@ class ApertureEnrichmentCenterGUI:
             print("Scanner initialized")
 
             self.launcher = GameLauncher(self.game_manager)
-            self.icon_manager = GameIconManager()
             self.achievement_manager = AchievementManager()
             self.update_manager = AutoUpdateManager(CURRENT_VERSION, CURRENT_SCRIPT)
             print("Managers initialized")
