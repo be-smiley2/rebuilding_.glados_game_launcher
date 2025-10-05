@@ -584,8 +584,49 @@ class ApertureEnrichmentCenterGUI:
         ).pack(anchor="w", pady=(4, 0))
         ttk.Label(lab_header, textvariable=self.mini_game_summary_var, style="PanelBody.TLabel").pack(anchor="w", pady=(8, 0))
 
-        stats_frame = ttk.Frame(mini_games_tab, style="Panel.TFrame")
-        stats_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        stats_container = ttk.Frame(mini_games_tab, style="Panel.TFrame")
+        stats_container.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+        stats_canvas = tk.Canvas(
+            stats_container,
+            bg=ApertureTheme.PANEL_BG,
+            highlightthickness=0,
+            relief="flat",
+        )
+        stats_scrollbar = ttk.Scrollbar(stats_container, orient="vertical", command=stats_canvas.yview)
+        stats_canvas.configure(yscrollcommand=stats_scrollbar.set)
+
+        stats_scrollable = ttk.Frame(stats_canvas, style="Panel.TFrame")
+
+        def _sync_scrollregion(event: tk.Event) -> None:
+            stats_canvas.configure(scrollregion=stats_canvas.bbox("all"))
+
+        stats_scrollable.bind("<Configure>", _sync_scrollregion)
+        stats_canvas.create_window((0, 0), window=stats_scrollable, anchor="nw")
+
+        stats_canvas.pack(side="left", fill="both", expand=True)
+        stats_scrollbar.pack(side="right", fill="y")
+
+        def _on_mousewheel(event: tk.Event) -> None:
+            if event.delta:
+                stats_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            elif event.num == 4:
+                stats_canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                stats_canvas.yview_scroll(1, "units")
+
+        def _bind_mousewheel(_: tk.Event) -> None:
+            stats_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            stats_canvas.bind_all("<Button-4>", _on_mousewheel)
+            stats_canvas.bind_all("<Button-5>", _on_mousewheel)
+
+        def _unbind_mousewheel(_: tk.Event) -> None:
+            stats_canvas.unbind_all("<MouseWheel>")
+            stats_canvas.unbind_all("<Button-4>")
+            stats_canvas.unbind_all("<Button-5>")
+
+        stats_scrollable.bind("<Enter>", _bind_mousewheel)
+        stats_scrollable.bind("<Leave>", _unbind_mousewheel)
 
         self.mini_game_stats_vars.clear()
         default_fields = [
@@ -599,7 +640,7 @@ class ApertureEnrichmentCenterGUI:
 
         for config in self.mini_game_configs:
             definition = self.achievement_manager.get_mini_game_definition(config["key"])
-            card = ttk.Frame(stats_frame, style="Panel.TFrame")
+            card = ttk.Frame(stats_scrollable, style="Panel.TFrame")
             card.pack(fill="x", padx=0, pady=(0, 12))
 
             ttk.Label(card, text=definition.get("title", config["key"]), style="PanelBody.TLabel").pack(anchor="w")
