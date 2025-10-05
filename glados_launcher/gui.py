@@ -45,6 +45,7 @@ class ApertureEnrichmentCenterGUI:
 
             self.update_check_in_progress = False
             self.update_install_in_progress = False
+            self.update_available = False
             self.last_scan_results: Dict[str, Any] = {}
             self.user_preferences = self.load_preferences()
             self.smart_mode = True
@@ -53,6 +54,7 @@ class ApertureEnrichmentCenterGUI:
             self.mini_game_summary_var = tk.StringVar(value="Awaiting simulation data.")
             self.sidebar_notebook: Optional[ttk.Notebook] = None
             self.mini_games_tab: Optional[ttk.Frame] = None
+            self.update_button: Optional[ttk.Button] = None
 
             print("Setting up GUI...")
             self.setup_gui()
@@ -394,6 +396,14 @@ class ApertureEnrichmentCenterGUI:
             style="Aperture.TButton",
             command=self.check_for_updates,
         ).pack(side="left", padx=4)
+        self.update_button = ttk.Button(
+            system_buttons,
+            text="Apply Update",
+            style="Aperture.TButton",
+            command=self.download_and_apply_update,
+        )
+        self.update_button.pack(side="left", padx=4)
+        self._refresh_update_controls()
 
         ttk.Label(system_frame, textvariable=self.update_status_var, style="AccentCaption.TLabel").pack(anchor="w", pady=(8, 0))
 
@@ -573,6 +583,8 @@ class ApertureEnrichmentCenterGUI:
             self.update_status_var.set("Status: Updates unavailable in this build.")
         else:
             self.update_status_var.set("Status: Ready for diagnostics.")
+
+        self._refresh_update_controls()
 
         self.add_commentary("GLaDOS", "Systems online. Ready for testing protocols.", "success")
         if not self.game_manager.get_games():
@@ -1432,6 +1444,7 @@ class ApertureEnrichmentCenterGUI:
         self.update_check_in_progress = True
         self.add_commentary("System", "Checking for updates...")
         self.update_status_var.set("Status: Checking for updates...")
+        self._refresh_update_controls()
 
         def _check() -> None:
             result = self.update_manager.check_for_updates()
@@ -1456,13 +1469,19 @@ class ApertureEnrichmentCenterGUI:
 
         if result.update_available:
             self.add_commentary("System", result.message, "success")
+            self.update_available = True
+            self._refresh_update_controls()
             if not background:
                 if messagebox.askyesno("Update Available", "Update detected. Apply now?"):
                     self.download_and_apply_update()
         elif result.success:
+            self.update_available = False
+            self._refresh_update_controls()
             if not background:
                 self.add_commentary("System", result.message)
         else:
+            self.update_available = False
+            self._refresh_update_controls()
             self.add_commentary("System", result.message, "error")
 
     def download_and_apply_update(self) -> None:
@@ -1478,6 +1497,7 @@ class ApertureEnrichmentCenterGUI:
         self.update_install_in_progress = True
         self.add_commentary("System", "Downloading update payload...")
         self.update_status_var.set("Status: Downloading update payload...")
+        self._refresh_update_controls()
 
         def _download() -> None:
             result = self.update_manager.download_and_apply_update()
@@ -1491,10 +1511,30 @@ class ApertureEnrichmentCenterGUI:
             self.update_status_var.set("Status: Update downloaded. Restart to apply.")
             self.add_commentary("System", result.message, "success")
             messagebox.showinfo("Update Install", result.message + "\nPlease restart the launcher to apply changes.")
+            self.update_available = False
         else:
             self.update_status_var.set(f"Status: Update failed - {result.message}")
             self.add_commentary("System", result.message, "error")
             messagebox.showerror("Update Install", result.message)
+
+        self._refresh_update_controls()
+
+    def _refresh_update_controls(self) -> None:
+        if self.update_button is None:
+            return
+
+        enabled = (
+            REQUESTS_AVAILABLE
+            and self.update_manager.is_supported()
+            and self.update_available
+            and not self.update_install_in_progress
+            and not self.update_check_in_progress
+        )
+
+        if enabled:
+            self.update_button.state(["!disabled"])
+        else:
+            self.update_button.state(["disabled"])
 
     def run(self) -> None:
         try:
