@@ -373,10 +373,14 @@ class ApertureEnrichmentCenterGUI:
         for text, command in mgmt_buttons:
             ttk.Button(control_row, text=text, style="Aperture.TButton", command=command).pack(side="left", padx=3)
 
-        ttk.Separator(button_frame, orient="vertical", style="Aperture.TSeparator").pack(side="left", fill="y", padx=18)
-
+        # Keep the system controls anchored to the far right so that the
+        # update button never disappears when the management section expands.
         system_frame = ttk.Frame(button_frame, style="Header.TFrame")
-        system_frame.pack(side="left")
+        system_frame.pack(side="right")
+
+        ttk.Separator(button_frame, orient="vertical", style="Aperture.TSeparator").pack(
+            side="right", fill="y", padx=18
+        )
         ttk.Label(system_frame, text="Systems", style="AccentCaption.TLabel").pack(anchor="w", pady=(0, 8))
 
         system_buttons = ttk.Frame(system_frame, style="Header.TFrame")
@@ -384,15 +388,15 @@ class ApertureEnrichmentCenterGUI:
 
         ttk.Button(
             system_buttons,
-            text="Preferences",
-            style="Aperture.TButton",
-            command=self.show_preferences,
-        ).pack(side="left", padx=4)
-        ttk.Button(
-            system_buttons,
             text="Check for Updates",
             style="Aperture.TButton",
             command=self.check_for_updates,
+        ).pack(side="left", padx=4)
+        ttk.Button(
+            system_buttons,
+            text="Preferences",
+            style="Aperture.TButton",
+            command=self.show_preferences,
         ).pack(side="left", padx=4)
 
         ttk.Label(system_frame, textvariable=self.update_status_var, style="AccentCaption.TLabel").pack(anchor="w", pady=(8, 0))
