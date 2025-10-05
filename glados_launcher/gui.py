@@ -349,13 +349,6 @@ class ApertureEnrichmentCenterGUI:
             style="Aperture.TButton",
             command=self.open_store_page,
         ).pack(side="left", padx=4)
-        ttk.Button(
-            quick_buttons,
-            text="Mini-Games Lab",
-            style="Aperture.TButton",
-            command=self.focus_mini_games_lab,
-        ).pack(side="left", padx=4)
-
         ttk.Separator(button_frame, orient="vertical", style="Aperture.TSeparator").pack(side="left", fill="y", padx=18)
 
         mgmt_frame = ttk.Frame(button_frame, style="Header.TFrame")
