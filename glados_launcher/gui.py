@@ -20,7 +20,7 @@ from .theme import ApertureTheme
 from .tetris import TrainTetrisGame
 from .doom import Doom2016MiniGame
 from .updates import AutoUpdateManager, UpdateApplyResult, UpdateCheckResult
-from .dependencies import REQUESTS_AVAILABLE
+from .dependencies import REQUESTS_AVAILABLE, ensure_pyglet
 
 
 class ApertureEnrichmentCenterGUI:
@@ -1623,6 +1623,15 @@ class ApertureEnrichmentCenterGUI:
             summary_var = getattr(self, "mini_game_summary_var", None)
             if summary_var is not None:
                 summary_text = " | ".join(summary_parts).strip()
+                if not ensure_pyglet(auto_install=False):
+                    extra_note = (
+                        "DOOM 2016 – pyglet will auto-install when first launched. "
+                        "If it fails, install manually with 'pip install pyglet' or "
+                        "'python -m pip install -r requirements-3d.txt'."
+                    )
+                    summary_text = (
+                        f"{summary_text} | {extra_note}" if summary_text else extra_note
+                    )
                 if summary_text:
                     summary_var.set(summary_text)
                 else:
@@ -1679,6 +1688,16 @@ class ApertureEnrichmentCenterGUI:
         self.update_mini_game_panel()
 
     def show_doom_training(self) -> None:
+        if not ensure_pyglet(auto_install=True):
+            messagebox.showwarning(
+                "3D Engine Unavailable",
+                "The DOOM simulator requires the optional 'pyglet' package.\n"
+                "The launcher attempted to install it automatically but the engine"
+                " is still unavailable. Install it manually with 'pip install pyglet' or\n"
+                "'python -m pip install -r requirements-3d.txt' and relaunch the training module.",
+            )
+            return
+
         if (
             hasattr(self, "doom_training")
             and isinstance(self.doom_training, Doom2016MiniGame)
@@ -1692,6 +1711,9 @@ class ApertureEnrichmentCenterGUI:
             on_close=self._handle_doom_closed,
             achievement_manager=self.achievement_manager,
         )
+        if not self.doom_training.is_open:
+            self.doom_training = None
+            self.update_mini_game_panel()
 
     def _handle_doom_closed(self) -> None:
         self.doom_training = None

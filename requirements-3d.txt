@@ -1,0 +1,2 @@
+# Optional dependencies for the DOOM 2016 combat simulator.
+pyglet>=1.5.27,<2.0
