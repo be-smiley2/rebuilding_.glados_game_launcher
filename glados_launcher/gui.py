@@ -54,6 +54,9 @@ class ApertureEnrichmentCenterGUI:
             self.mini_game_summary_var = tk.StringVar(value="Awaiting simulation data.")
             self.sidebar_notebook: Optional[ttk.Notebook] = None
             self.mini_games_tab: Optional[ttk.Frame] = None
+            self.system_tab: Optional[ttk.Frame] = None
+            self.check_updates_button: Optional[ttk.Button] = None
+            self.apply_update_button: Optional[ttk.Button] = None
 
             print("Setting up GUI...")
             self.setup_gui()
@@ -391,9 +394,9 @@ class ApertureEnrichmentCenterGUI:
         ).pack(side="left", padx=4)
         ttk.Button(
             system_buttons,
-            text="Check for Updates",
+            text="System Options",
             style="Aperture.TButton",
-            command=self.check_for_updates,
+            command=self.focus_system_options,
         ).pack(side="left", padx=4)
 
         ttk.Label(system_frame, textvariable=self.update_status_var, style="AccentCaption.TLabel").pack(anchor="w", pady=(8, 0))
@@ -562,6 +565,54 @@ class ApertureEnrichmentCenterGUI:
             command=lambda: self.sidebar_notebook.select(operations_tab),
             width=22,
         ).pack(side="left", padx=(10, 0))
+
+        system_tab = ttk.Frame(notebook, style="Panel.TFrame")
+        notebook.add(system_tab, text="System Options")
+        self.system_tab = system_tab
+
+        system_header = ttk.Frame(system_tab, style="Panel.TFrame")
+        system_header.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(system_header, text="Launcher Maintenance", style="PanelTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            system_header,
+            text="Manage diagnostics, updates, and Aperture configuration protocols.",
+            style="PanelCaption.TLabel",
+        ).pack(anchor="w", pady=(4, 0))
+
+        update_panel = ttk.Frame(system_tab, style="Panel.TFrame")
+        update_panel.pack(fill="x", padx=10, pady=(0, 10))
+
+        ttk.Label(update_panel, text="Software Updates", style="PanelBody.TLabel").pack(anchor="w")
+        ttk.Label(
+            update_panel,
+            text="Initiate manual update checks or apply approved builds when available.",
+            style="PanelCaption.TLabel",
+        ).pack(anchor="w", pady=(2, 0))
+
+        update_controls = ttk.Frame(update_panel, style="Panel.TFrame")
+        update_controls.pack(fill="x", pady=(10, 0))
+
+        self.check_updates_button = ttk.Button(
+            update_controls,
+            text="Check for Updates",
+            style="Aperture.TButton",
+            command=self.check_for_updates,
+        )
+        self.check_updates_button.pack(side="left")
+
+        self.apply_update_button = ttk.Button(
+            update_controls,
+            text="Apply Update",
+            style="GLaDOS.TButton",
+            command=self.download_and_apply_update,
+        )
+        self.apply_update_button.state(["disabled"])
+        self.apply_update_button.pack(side="left", padx=(10, 0))
+
+        ttk.Label(update_panel, textvariable=self.update_status_var, style="PanelCaption.TLabel").pack(
+            anchor="w", pady=(10, 0)
+        )
 
     def initialize_features(self) -> None:
         self.commentary_mode.set(self.user_preferences.get("commentary_level", "balanced"))
@@ -1406,6 +1457,13 @@ class ApertureEnrichmentCenterGUI:
         except Exception:
             pass
 
+    def focus_system_options(self) -> None:
+        try:
+            if self.sidebar_notebook is not None and self.system_tab is not None:
+                self.sidebar_notebook.select(self.system_tab)
+        except Exception:
+            pass
+
     def show_tetris(self) -> None:
         if hasattr(self, "tetris") and isinstance(self.tetris, TrainTetrisGame) and self.tetris.is_open:
             self.tetris.focus()
@@ -1523,21 +1581,35 @@ class ApertureEnrichmentCenterGUI:
         self._refresh_update_controls()
 
     def _refresh_update_controls(self) -> None:
-        if self.update_button is None:
-            return
+        if self.check_updates_button is not None:
+            try:
+                can_check = (
+                    REQUESTS_AVAILABLE
+                    and self.update_manager.is_supported()
+                    and not self.update_install_in_progress
+                    and not self.update_check_in_progress
+                )
+                if can_check:
+                    self.check_updates_button.state(["!disabled"])
+                else:
+                    self.check_updates_button.state(["disabled"])
+            except Exception:
+                pass
 
-        enabled = (
-            REQUESTS_AVAILABLE
-            and self.update_manager.is_supported()
-            and self.update_available
-            and not self.update_install_in_progress
-            and not self.update_check_in_progress
-        )
-
-        if enabled:
-            self.update_button.state(["!disabled"])
-        else:
-            self.update_button.state(["disabled"])
+        if self.apply_update_button is not None:
+            try:
+                apply_enabled = (
+                    REQUESTS_AVAILABLE
+                    and self.update_manager.is_supported()
+                    and self.update_available
+                    and not self.update_install_in_progress
+                )
+                if apply_enabled:
+                    self.apply_update_button.state(["!disabled"])
+                else:
+                    self.apply_update_button.state(["disabled"])
+            except Exception:
+                pass
 
     def run(self) -> None:
         try:
