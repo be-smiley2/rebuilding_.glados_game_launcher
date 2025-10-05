@@ -65,6 +65,52 @@ class AchievementManager:
                 },
             ],
         },
+        "space_invaders_rapid_fire": {
+            "title": "Space Invaders – Rapid Fire Range",
+            "short_title": "Space Invaders",
+            "description": "Hold the chromatic line against waves of invaders with Aperture rapid fire tech.",
+            "launch_label": "Launch Rapid Fire Range",
+            "stat_fields": [
+                "sessions",
+                "best_score",
+                "total_lines",
+                "highest_level",
+                "total_time",
+                "last_played",
+            ],
+            "stats_labels": {
+                "sessions": "Defense Runs",
+                "best_score": "Best Containment Score",
+                "total_lines": "Invaders Neutralized",
+                "highest_level": "Deepest Wave",
+                "total_time": "Total Time on Range",
+                "last_played": "Last Defense",
+            },
+            "summary_template": "Space Invaders – Score {best_score} | {total_lines} invaders neutralized | Last run {last_played}",
+            "summary_empty": "Space Invaders – No defense data recorded.",
+            "achievements": [
+                {
+                    "id": "first_contact",
+                    "name": "First Contact",
+                    "description": "Complete a rapid fire defense without aborting.",
+                },
+                {
+                    "id": "chromatic_shield",
+                    "name": "Chromatic Shield",
+                    "description": "Neutralize 40 invaders across all runs.",
+                },
+                {
+                    "id": "ace_gunner",
+                    "name": "Ace Gunner",
+                    "description": "Earn a containment score of 2,000 in a single run.",
+                },
+                {
+                    "id": "wave_crusher",
+                    "name": "Wave Crusher",
+                    "description": "Reach wave 6 in any defense run.",
+                },
+            ],
+        },
         "doom_slayer_training": {
             "title": "DOOM 2016 Combat Simulator",
             "short_title": "DOOM 2016",
@@ -319,6 +365,15 @@ class AchievementManager:
                 return stats.get("total_lines", 0) >= 25
             if achievement_id == "impeccable_alignment":
                 return stats.get("highest_level", 1) >= 5
+        if game_key == "space_invaders_rapid_fire":
+            if achievement_id == "first_contact":
+                return stats.get("sessions", 0) >= 1 and not stats.get("last_aborted", False)
+            if achievement_id == "chromatic_shield":
+                return stats.get("total_lines", 0) >= 40
+            if achievement_id == "ace_gunner":
+                return stats.get("best_score", 0) >= 2000
+            if achievement_id == "wave_crusher":
+                return stats.get("highest_level", 1) >= 6
         if game_key == "doom_slayer_training":
             if achievement_id == "fresh_meat":
                 return stats.get("sessions", 0) >= 1 and not stats.get("last_aborted", False)

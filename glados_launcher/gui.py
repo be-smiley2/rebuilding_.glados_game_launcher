@@ -20,6 +20,7 @@ from .theme import ApertureTheme
 from .tetris import TrainTetrisGame
 from .doom import Doom2016MiniGame
 from .doom_classic import DoomClassicEpisodeIMiniGame, DoomClassicEpisodeIIMiniGame
+from .space_invaders import RapidFireSpaceInvaders
 from .updates import AutoUpdateManager, UpdateApplyResult, UpdateCheckResult
 from .dependencies import REQUESTS_AVAILABLE
 
@@ -60,6 +61,7 @@ class ApertureEnrichmentCenterGUI:
             self.mini_game_summary_var = tk.StringVar(value="Awaiting simulation data.")
             self.mini_game_configs = [
                 {"key": "train_tetris", "launcher": self.show_tetris},
+                {"key": "space_invaders_rapid_fire", "launcher": self.show_space_invaders},
                 {"key": "doom_slayer_training", "launcher": self.show_doom_training},
                 {"key": "doom_classic_1", "launcher": self.show_doom_classic_episode_one},
                 {"key": "doom_classic_2", "launcher": self.show_doom_classic_episode_two},
@@ -71,6 +73,7 @@ class ApertureEnrichmentCenterGUI:
             self.check_updates_button: Optional[ttk.Button] = None
             self.apply_update_button: Optional[ttk.Button] = None
             self.tetris: Optional[TrainTetrisGame] = None
+            self.space_invaders: Optional[RapidFireSpaceInvaders] = None
             self.doom_training: Optional[Doom2016MiniGame] = None
             self.doom_episode_one: Optional[DoomClassicEpisodeIMiniGame] = None
             self.doom_episode_two: Optional[DoomClassicEpisodeIIMiniGame] = None
@@ -1681,6 +1684,25 @@ class ApertureEnrichmentCenterGUI:
 
     def _handle_tetris_closed(self) -> None:
         self.tetris = None
+        self.update_mini_game_panel()
+
+    def show_space_invaders(self) -> None:
+        if (
+            hasattr(self, "space_invaders")
+            and isinstance(self.space_invaders, RapidFireSpaceInvaders)
+            and self.space_invaders.is_open
+        ):
+            self.space_invaders.focus()
+            return
+
+        self.space_invaders = RapidFireSpaceInvaders(
+            self.root,
+            on_close=self._handle_space_invaders_closed,
+            achievement_manager=self.achievement_manager,
+        )
+
+    def _handle_space_invaders_closed(self) -> None:
+        self.space_invaders = None
         self.update_mini_game_panel()
 
     def show_doom_training(self) -> None:
