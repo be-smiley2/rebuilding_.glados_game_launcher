@@ -45,6 +45,7 @@ class ApertureEnrichmentCenterGUI:
 
             self.update_check_in_progress = False
             self.update_install_in_progress = False
+            self.update_available = False
             self.last_scan_results: Dict[str, Any] = {}
             self.user_preferences = self.load_preferences()
             self.smart_mode = True
@@ -569,10 +570,15 @@ class ApertureEnrichmentCenterGUI:
 
         if not REQUESTS_AVAILABLE:
             self.update_status_var.set("Status: Updates unavailable (missing requests module).")
+            self._set_apply_update_enabled(False)
         elif not self.update_manager.is_supported():
             self.update_status_var.set("Status: Updates unavailable in this build.")
+            self._set_apply_update_enabled(False)
         else:
             self.update_status_var.set("Status: Ready for diagnostics.")
+            self._set_apply_update_enabled(False)
+
+        self._refresh_update_controls()
 
         self.add_commentary("GLaDOS", "Systems online. Ready for testing protocols.", "success")
         if not self.game_manager.get_games():
@@ -1432,6 +1438,7 @@ class ApertureEnrichmentCenterGUI:
         self.update_check_in_progress = True
         self.add_commentary("System", "Checking for updates...")
         self.update_status_var.set("Status: Checking for updates...")
+        self._refresh_update_controls()
 
         def _check() -> None:
             result = self.update_manager.check_for_updates()
@@ -1455,7 +1462,10 @@ class ApertureEnrichmentCenterGUI:
             messagebox.showinfo("Update Check", result.message)
 
         if result.update_available:
+            self._set_apply_update_enabled(True)
             self.add_commentary("System", result.message, "success")
+            self.update_available = True
+            self._refresh_update_controls()
             if not background:
                 if messagebox.askyesno("Update Available", "Update detected. Apply now?"):
                     self.download_and_apply_update()
@@ -1491,10 +1501,43 @@ class ApertureEnrichmentCenterGUI:
             self.update_status_var.set("Status: Update downloaded. Restart to apply.")
             self.add_commentary("System", result.message, "success")
             messagebox.showinfo("Update Install", result.message + "\nPlease restart the launcher to apply changes.")
+            self.update_available = False
         else:
             self.update_status_var.set(f"Status: Update failed - {result.message}")
             self.add_commentary("System", result.message, "error")
             messagebox.showerror("Update Install", result.message)
+            self._set_apply_update_enabled(True)
+
+    def _set_apply_update_enabled(self, enabled: bool) -> None:
+        if self.apply_update_button is None:
+            return
+
+        try:
+            if enabled:
+                self.apply_update_button.state(["!disabled"])
+            else:
+                self.apply_update_button.state(["disabled"])
+        except Exception:
+            pass
+
+        self._refresh_update_controls()
+
+    def _refresh_update_controls(self) -> None:
+        if self.update_button is None:
+            return
+
+        enabled = (
+            REQUESTS_AVAILABLE
+            and self.update_manager.is_supported()
+            and self.update_available
+            and not self.update_install_in_progress
+            and not self.update_check_in_progress
+        )
+
+        if enabled:
+            self.update_button.state(["!disabled"])
+        else:
+            self.update_button.state(["disabled"])
 
     def run(self) -> None:
         try:
