@@ -21,6 +21,27 @@ class AchievementManager:
     MINI_GAME_DEFINITIONS = {
         "train_tetris": {
             "title": "Train Yard Simulation",
+            "short_title": "Train Yard",
+            "description": "Guide test trains with precision placement to keep the yard operational.",
+            "launch_label": "Launch Train Yard Simulation",
+            "stat_fields": [
+                "sessions",
+                "best_score",
+                "total_lines",
+                "highest_level",
+                "total_time",
+                "last_played",
+            ],
+            "stats_labels": {
+                "sessions": "Simulation Sessions",
+                "best_score": "Best Score",
+                "total_lines": "Total Lines Cleared",
+                "highest_level": "Highest Level Achieved",
+                "total_time": "Lab Time Invested",
+                "last_played": "Last Attempt",
+            },
+            "summary_template": "Train Yard – Best score {best_score} | {total_lines} lines cleared | Last attempt {last_played}",
+            "summary_empty": "Train Yard – No simulation data recorded.",
             "achievements": [
                 {
                     "id": "first_dispatch",
@@ -43,7 +64,59 @@ class AchievementManager:
                     "description": "Reach level 5 in any session.",
                 },
             ],
-        }
+        },
+        "doom_slayer_training": {
+            "title": "DOOM 2016 Combat Simulator",
+            "short_title": "DOOM 2016",
+            "description": "Rip and tear through a demon gauntlet tuned for the launcher interface.",
+            "launch_label": "Launch DOOM Simulator",
+            "stat_fields": [
+                "sessions",
+                "best_score",
+                "total_lines",
+                "highest_level",
+                "best_armor",
+                "total_time",
+                "last_played",
+            ],
+            "stats_labels": {
+                "sessions": "Combat Runs",
+                "best_score": "Best Combat Rating",
+                "total_lines": "Total Demons Eliminated",
+                "highest_level": "Highest Threat Level",
+                "best_armor": "Best Armor Remaining",
+                "total_time": "Total Time in Arena",
+                "last_played": "Last Attempt",
+            },
+            "stat_defaults": {
+                "best_armor": 0,
+                "last_armor": 0,
+            },
+            "summary_template": "DOOM 2016 – Rating {best_score} | {total_lines} demons eliminated | Last attempt {last_played}",
+            "summary_empty": "DOOM 2016 – No combat data recorded.",
+            "achievements": [
+                {
+                    "id": "fresh_meat",
+                    "name": "Fresh Meat",
+                    "description": "Complete a combat simulator run.",
+                },
+                {
+                    "id": "rip_and_tear",
+                    "name": "Rip and Tear",
+                    "description": "Eliminate 40 demons across all runs.",
+                },
+                {
+                    "id": "untouchable",
+                    "name": "Untouchable",
+                    "description": "Finish a run without losing all armor.",
+                },
+                {
+                    "id": "doomslayer_rising",
+                    "name": "Doomslayer Rising",
+                    "description": "Reach threat level 6 in a single run.",
+                },
+            ],
+        },
     }
 
     def load_user_achievements(self) -> Dict:
@@ -74,6 +147,7 @@ class AchievementManager:
         lines: int = 0,
         level: int = 1,
         duration: float = 0.0,
+        armor: int = 0,
         aborted: bool = False,
     ) -> List[Dict]:
         """Record a finished mini-game session and update achievements.
@@ -86,26 +160,31 @@ class AchievementManager:
             return []
 
         mini_games = self.user_achievements.setdefault("mini_games", {})
-        stats = mini_games.setdefault(
-            game_key,
-            {
-                "best_score": 0,
-                "total_lines": 0,
-                "sessions": 0,
-                "highest_level": 1,
-                "total_time": 0.0,
-                "achievements": [],
-            },
-        )
+        defaults = {
+            "best_score": 0,
+            "total_lines": 0,
+            "sessions": 0,
+            "highest_level": 1,
+            "total_time": 0.0,
+            "achievements": [],
+        }
+        defaults.update(definition.get("stat_defaults", {}))
+
+        stats = mini_games.setdefault(game_key, defaults.copy())
+
+        for key, value in defaults.items():
+            stats.setdefault(key, value)
 
         stats["sessions"] = stats.get("sessions", 0) + 1
         stats["best_score"] = max(stats.get("best_score", 0), score)
         stats["total_lines"] = stats.get("total_lines", 0) + lines
         stats["highest_level"] = max(stats.get("highest_level", 1), level)
         stats["total_time"] = stats.get("total_time", 0.0) + max(duration, 0.0)
+        stats["best_armor"] = max(stats.get("best_armor", 0), armor)
         stats["last_score"] = score
         stats["last_lines"] = lines
         stats["last_level"] = level
+        stats["last_armor"] = armor
         stats["last_played"] = time.time()
         stats["last_aborted"] = aborted
 
@@ -136,6 +215,15 @@ class AchievementManager:
                 return stats.get("total_lines", 0) >= 25
             if achievement_id == "impeccable_alignment":
                 return stats.get("highest_level", 1) >= 5
+        if game_key == "doom_slayer_training":
+            if achievement_id == "fresh_meat":
+                return stats.get("sessions", 0) >= 1 and not stats.get("last_aborted", False)
+            if achievement_id == "rip_and_tear":
+                return stats.get("total_lines", 0) >= 40
+            if achievement_id == "untouchable":
+                return stats.get("best_armor", 0) >= 3 and not stats.get("last_aborted", False)
+            if achievement_id == "doomslayer_rising":
+                return stats.get("highest_level", 1) >= 6
         return False
 
     def get_mini_game_stats(self, game_key: str) -> Dict:
@@ -148,10 +236,48 @@ class AchievementManager:
             "total_time": 0.0,
             "achievements": [],
         }
+        defaults.update(definition.get("stat_defaults", {}))
         stats = self.user_achievements.setdefault("mini_games", {}).get(game_key, {})
         combined = {**defaults, **stats}
         combined["title"] = definition.get("title", game_key)
         return combined
+
+    def get_mini_game_definition(self, game_key: str) -> Dict:
+        return self.MINI_GAME_DEFINITIONS.get(game_key, {})
+
+    def get_mini_game_definitions(self) -> Dict[str, Dict]:
+        return self.MINI_GAME_DEFINITIONS
+
+    def format_mini_game_summary(self, game_key: str, stats: Dict) -> str:
+        definition = self.get_mini_game_definition(game_key)
+        template = definition.get("summary_template")
+        empty_template = definition.get("summary_empty", "No simulation data recorded.")
+
+        sessions = stats.get("sessions", 0)
+        if sessions <= 0:
+            return empty_template
+
+        formatted = stats.copy()
+        timestamp = stats.get("last_played")
+        if timestamp:
+            try:
+                formatted["last_played"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(timestamp))
+            except Exception:
+                formatted["last_played"] = "Recently"
+        else:
+            formatted["last_played"] = "Never"
+
+        if template:
+            try:
+                return template.format(**formatted)
+            except Exception:
+                pass
+
+        return (
+            f"{definition.get('short_title', game_key)} – "
+            f"Best score {formatted.get('best_score', 0)} | "
+            f"Runs {sessions}"
+        )
 
     def get_mini_game_achievements(self, game_key: str) -> List[Dict]:
         definition = self.MINI_GAME_DEFINITIONS.get(game_key, {})
