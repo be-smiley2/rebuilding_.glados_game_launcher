@@ -18,8 +18,6 @@ from .launcher import GameLauncher
 from .scanner import SmartGameScanner
 from .theme import ApertureTheme
 from .tetris import TrainTetrisGame
-from .doom import Doom2016MiniGame
-from .doom_classic import DoomClassicEpisodeIMiniGame, DoomClassicEpisodeIIMiniGame
 from .updates import AutoUpdateManager, UpdateApplyResult, UpdateCheckResult
 from .dependencies import REQUESTS_AVAILABLE
 
@@ -60,9 +58,6 @@ class ApertureEnrichmentCenterGUI:
             self.mini_game_summary_var = tk.StringVar(value="Awaiting simulation data.")
             self.mini_game_configs = [
                 {"key": "train_tetris", "launcher": self.show_tetris},
-                {"key": "doom_slayer_training", "launcher": self.show_doom_training},
-                {"key": "doom_classic_1", "launcher": self.show_doom_classic_episode_one},
-                {"key": "doom_classic_2", "launcher": self.show_doom_classic_episode_two},
             ]
             self.mini_game_stats_vars: Dict[str, Dict[str, tk.StringVar]] = {}
             self.sidebar_notebook: Optional[ttk.Notebook] = None
@@ -71,9 +66,6 @@ class ApertureEnrichmentCenterGUI:
             self.check_updates_button: Optional[ttk.Button] = None
             self.apply_update_button: Optional[ttk.Button] = None
             self.tetris: Optional[TrainTetrisGame] = None
-            self.doom_training: Optional[Doom2016MiniGame] = None
-            self.doom_episode_one: Optional[DoomClassicEpisodeIMiniGame] = None
-            self.doom_episode_two: Optional[DoomClassicEpisodeIIMiniGame] = None
 
             print("Setting up GUI...")
             self.setup_gui()
@@ -1681,63 +1673,6 @@ class ApertureEnrichmentCenterGUI:
 
     def _handle_tetris_closed(self) -> None:
         self.tetris = None
-        self.update_mini_game_panel()
-
-    def show_doom_training(self) -> None:
-        if (
-            hasattr(self, "doom_training")
-            and isinstance(self.doom_training, Doom2016MiniGame)
-            and self.doom_training.is_open
-        ):
-            self.doom_training.focus()
-            return
-
-        self.doom_training = Doom2016MiniGame(
-            self.root,
-            on_close=self._handle_doom_closed,
-            achievement_manager=self.achievement_manager,
-        )
-
-    def _handle_doom_closed(self) -> None:
-        self.doom_training = None
-        self.update_mini_game_panel()
-
-    def show_doom_classic_episode_one(self) -> None:
-        if (
-            hasattr(self, "doom_episode_one")
-            and isinstance(self.doom_episode_one, DoomClassicEpisodeIMiniGame)
-            and self.doom_episode_one.is_open
-        ):
-            self.doom_episode_one.focus()
-            return
-
-        self.doom_episode_one = DoomClassicEpisodeIMiniGame(
-            self.root,
-            on_close=self._handle_doom_episode_one_closed,
-            achievement_manager=self.achievement_manager,
-        )
-
-    def _handle_doom_episode_one_closed(self) -> None:
-        self.doom_episode_one = None
-        self.update_mini_game_panel()
-
-    def show_doom_classic_episode_two(self) -> None:
-        if (
-            hasattr(self, "doom_episode_two")
-            and isinstance(self.doom_episode_two, DoomClassicEpisodeIIMiniGame)
-            and self.doom_episode_two.is_open
-        ):
-            self.doom_episode_two.focus()
-            return
-
-        self.doom_episode_two = DoomClassicEpisodeIIMiniGame(
-            self.root,
-            on_close=self._handle_doom_episode_two_closed,
-            achievement_manager=self.achievement_manager,
-        )
-
-    def _handle_doom_episode_two_closed(self) -> None:
-        self.doom_episode_two = None
         self.update_mini_game_panel()
 
     def check_for_updates(self) -> None:
