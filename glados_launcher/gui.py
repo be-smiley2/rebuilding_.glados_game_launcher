@@ -53,6 +53,7 @@ class ApertureEnrichmentCenterGUI:
             self.mini_game_summary_var = tk.StringVar(value="Awaiting simulation data.")
             self.sidebar_notebook: Optional[ttk.Notebook] = None
             self.mini_games_tab: Optional[ttk.Frame] = None
+            self.apply_update_button: Optional[ttk.Button] = None
 
             print("Setting up GUI...")
             self.setup_gui()
@@ -197,7 +198,12 @@ class ApertureEnrichmentCenterGUI:
         )
         self.style.map(
             "Aperture.TButton",
-            background=[("active", ApertureTheme.BUTTON_HOVER), ("pressed", ApertureTheme.BUTTON_ACTIVE)],
+            background=[
+                ("disabled", ApertureTheme.BUTTON_DISABLED),
+                ("pressed", ApertureTheme.BUTTON_ACTIVE),
+                ("active", ApertureTheme.BUTTON_HOVER),
+            ],
+            foreground=[("disabled", ApertureTheme.TEXT_MUTED)],
             relief=[("pressed", "sunken")],
         )
 
@@ -395,6 +401,15 @@ class ApertureEnrichmentCenterGUI:
             command=self.check_for_updates,
         ).pack(side="left", padx=4)
 
+        self.apply_update_button = ttk.Button(
+            system_buttons,
+            text="Apply Update",
+            style="Aperture.TButton",
+            command=self.download_and_apply_update,
+        )
+        self.apply_update_button.pack(side="left", padx=4)
+        self._set_apply_update_enabled(False)
+
         ttk.Label(system_frame, textvariable=self.update_status_var, style="AccentCaption.TLabel").pack(anchor="w", pady=(8, 0))
 
     def create_left_panel(self, parent: ttk.PanedWindow) -> None:
@@ -569,10 +584,13 @@ class ApertureEnrichmentCenterGUI:
 
         if not REQUESTS_AVAILABLE:
             self.update_status_var.set("Status: Updates unavailable (missing requests module).")
+            self._set_apply_update_enabled(False)
         elif not self.update_manager.is_supported():
             self.update_status_var.set("Status: Updates unavailable in this build.")
+            self._set_apply_update_enabled(False)
         else:
             self.update_status_var.set("Status: Ready for diagnostics.")
+            self._set_apply_update_enabled(False)
 
         self.add_commentary("GLaDOS", "Systems online. Ready for testing protocols.", "success")
         if not self.game_manager.get_games():
@@ -1455,14 +1473,17 @@ class ApertureEnrichmentCenterGUI:
             messagebox.showinfo("Update Check", result.message)
 
         if result.update_available:
+            self._set_apply_update_enabled(True)
             self.add_commentary("System", result.message, "success")
             if not background:
                 if messagebox.askyesno("Update Available", "Update detected. Apply now?"):
                     self.download_and_apply_update()
         elif result.success:
+            self._set_apply_update_enabled(False)
             if not background:
                 self.add_commentary("System", result.message)
         else:
+            self._set_apply_update_enabled(False)
             self.add_commentary("System", result.message, "error")
 
     def download_and_apply_update(self) -> None:
@@ -1478,6 +1499,7 @@ class ApertureEnrichmentCenterGUI:
         self.update_install_in_progress = True
         self.add_commentary("System", "Downloading update payload...")
         self.update_status_var.set("Status: Downloading update payload...")
+        self._set_apply_update_enabled(False)
 
         def _download() -> None:
             result = self.update_manager.download_and_apply_update()
@@ -1495,6 +1517,19 @@ class ApertureEnrichmentCenterGUI:
             self.update_status_var.set(f"Status: Update failed - {result.message}")
             self.add_commentary("System", result.message, "error")
             messagebox.showerror("Update Install", result.message)
+            self._set_apply_update_enabled(True)
+
+    def _set_apply_update_enabled(self, enabled: bool) -> None:
+        if self.apply_update_button is None:
+            return
+
+        try:
+            if enabled:
+                self.apply_update_button.state(["!disabled"])
+            else:
+                self.apply_update_button.state(["disabled"])
+        except Exception:
+            pass
 
     def run(self) -> None:
         try:

@@ -32,6 +32,7 @@ class ApertureTheme:
     BUTTON_NORMAL = "#223447"
     BUTTON_HOVER = "#2f4c66"
     BUTTON_ACTIVE = "#3a5f7d"
+    BUTTON_DISABLED = "#1b2835"
 
     BORDER_LIGHT = "#3c5064"
     BORDER_DARK = "#0b1118"
