@@ -20,7 +20,7 @@ from .theme import ApertureTheme
 from .tetris import TrainTetrisGame
 from .doom import Doom2016MiniGame
 from .updates import AutoUpdateManager, UpdateApplyResult, UpdateCheckResult
-from .dependencies import REQUESTS_AVAILABLE
+from .dependencies import REQUESTS_AVAILABLE, PYGLET_AVAILABLE
 
 
 class ApertureEnrichmentCenterGUI:
@@ -1623,6 +1623,11 @@ class ApertureEnrichmentCenterGUI:
             summary_var = getattr(self, "mini_game_summary_var", None)
             if summary_var is not None:
                 summary_text = " | ".join(summary_parts).strip()
+                if not PYGLET_AVAILABLE:
+                    extra_note = "DOOM 2016 – Install pyglet to enable the 3D simulator."
+                    summary_text = (
+                        f"{summary_text} | {extra_note}" if summary_text else extra_note
+                    )
                 if summary_text:
                     summary_var.set(summary_text)
                 else:
@@ -1679,6 +1684,14 @@ class ApertureEnrichmentCenterGUI:
         self.update_mini_game_panel()
 
     def show_doom_training(self) -> None:
+        if not PYGLET_AVAILABLE:
+            messagebox.showwarning(
+                "3D Engine Unavailable",
+                "The DOOM simulator requires the optional 'pyglet' package.\n"
+                "Install it with 'pip install pyglet' and relaunch the training module.",
+            )
+            return
+
         if (
             hasattr(self, "doom_training")
             and isinstance(self.doom_training, Doom2016MiniGame)
@@ -1692,6 +1705,9 @@ class ApertureEnrichmentCenterGUI:
             on_close=self._handle_doom_closed,
             achievement_manager=self.achievement_manager,
         )
+        if not self.doom_training.is_open:
+            self.doom_training = None
+            self.update_mini_game_panel()
 
     def _handle_doom_closed(self) -> None:
         self.doom_training = None

@@ -25,5 +25,6 @@ except ImportError:  # pragma: no cover - Windows only module
     winreg = _WinRegStub()  # type: ignore
 
 REQUESTS_AVAILABLE = importlib.util.find_spec("requests") is not None
+PYGLET_AVAILABLE = importlib.util.find_spec("pyglet") is not None
 
-__all__ = ["winreg", "REQUESTS_AVAILABLE"]
+__all__ = ["winreg", "REQUESTS_AVAILABLE", "PYGLET_AVAILABLE"]
