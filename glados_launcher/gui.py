@@ -49,6 +49,10 @@ class ApertureEnrichmentCenterGUI:
             self.user_preferences = self.load_preferences()
             self.smart_mode = True
             self.commentary_mode = tk.StringVar(value="balanced")
+            self.update_status_var = tk.StringVar(value="Status: Idle")
+            self.mini_game_summary_var = tk.StringVar(value="Awaiting simulation data.")
+            self.sidebar_notebook: Optional[ttk.Notebook] = None
+            self.mini_games_tab: Optional[ttk.Frame] = None
 
             print("Setting up GUI...")
             self.setup_gui()
@@ -162,6 +166,24 @@ class ApertureEnrichmentCenterGUI:
             background=ApertureTheme.PANEL_BG,
             foreground=ApertureTheme.TEXT_SECONDARY,
             font=ApertureTheme.FONT_SMALL,
+        )
+
+        self.style.configure(
+            "Aperture.TNotebook",
+            background=ApertureTheme.PRIMARY_BG,
+            borderwidth=0,
+        )
+        self.style.configure(
+            "Aperture.TNotebook.Tab",
+            background=ApertureTheme.SECONDARY_BG,
+            foreground=ApertureTheme.TEXT_PRIMARY,
+            font=ApertureTheme.FONT_BASE,
+            padding=(12, 6),
+        )
+        self.style.map(
+            "Aperture.TNotebook.Tab",
+            background=[("selected", ApertureTheme.ACCENT_BG)],
+            foreground=[("selected", ApertureTheme.TEXT_PRIMARY)],
         )
 
         self.style.configure(
@@ -317,7 +339,18 @@ class ApertureEnrichmentCenterGUI:
             style="GLaDOS.TButton",
             command=self.launch_selected_game,
         ).pack(side="left", padx=4)
-        ttk.Button(quick_buttons, text="Open Store", style="Aperture.TButton", command=self.open_store_page).pack(side="left", padx=4)
+        ttk.Button(
+            quick_buttons,
+            text="Open Store",
+            style="Aperture.TButton",
+            command=self.open_store_page,
+        ).pack(side="left", padx=4)
+        ttk.Button(
+            quick_buttons,
+            text="Mini-Games Lab",
+            style="Aperture.TButton",
+            command=self.focus_mini_games_lab,
+        ).pack(side="left", padx=4)
 
         ttk.Separator(button_frame, orient="vertical", style="Aperture.TSeparator").pack(side="left", fill="y", padx=18)
 
@@ -330,10 +363,8 @@ class ApertureEnrichmentCenterGUI:
             ("Remove", self.remove_selected_game),
             ("Purge", self.remove_all_games),
             ("Rate", self.rate_selected_game),
-            ("Mini-Games", self.show_mini_games),
             ("Analysis", self.show_analysis),
-            ("Preferences", self.show_preferences),
-            ("Check Updates", lambda: self.check_for_updates()),
+            ("Achievements", self.show_achievements),
         ]
 
         control_row = ttk.Frame(mgmt_frame, style="Header.TFrame")
@@ -341,6 +372,30 @@ class ApertureEnrichmentCenterGUI:
 
         for text, command in mgmt_buttons:
             ttk.Button(control_row, text=text, style="Aperture.TButton", command=command).pack(side="left", padx=3)
+
+        ttk.Separator(button_frame, orient="vertical", style="Aperture.TSeparator").pack(side="left", fill="y", padx=18)
+
+        system_frame = ttk.Frame(button_frame, style="Header.TFrame")
+        system_frame.pack(side="left")
+        ttk.Label(system_frame, text="Systems", style="AccentCaption.TLabel").pack(anchor="w", pady=(0, 8))
+
+        system_buttons = ttk.Frame(system_frame, style="Header.TFrame")
+        system_buttons.pack()
+
+        ttk.Button(
+            system_buttons,
+            text="Preferences",
+            style="Aperture.TButton",
+            command=self.show_preferences,
+        ).pack(side="left", padx=4)
+        ttk.Button(
+            system_buttons,
+            text="Check for Updates",
+            style="Aperture.TButton",
+            command=self.check_for_updates,
+        ).pack(side="left", padx=4)
+
+        ttk.Label(system_frame, textvariable=self.update_status_var, style="AccentCaption.TLabel").pack(anchor="w", pady=(8, 0))
 
     def create_left_panel(self, parent: ttk.PanedWindow) -> None:
         self.left_panel = ttk.Frame(parent, style="Panel.TFrame")
@@ -395,12 +450,19 @@ class ApertureEnrichmentCenterGUI:
     def create_right_panel(self, parent: ttk.PanedWindow) -> None:
         self.right_panel = ttk.Frame(parent, style="Panel.TFrame")
 
-        comment_header = ttk.Frame(self.right_panel, style="Panel.TFrame")
+        notebook = ttk.Notebook(self.right_panel, style="Aperture.TNotebook")
+        notebook.pack(fill="both", expand=True, padx=10, pady=10)
+        self.sidebar_notebook = notebook
+
+        operations_tab = ttk.Frame(notebook, style="Panel.TFrame")
+        notebook.add(operations_tab, text="Control Feed")
+
+        comment_header = ttk.Frame(operations_tab, style="Panel.TFrame")
         comment_header.pack(fill="x", padx=10, pady=10)
 
         ttk.Label(comment_header, text="AI Commentary System", style="PanelTitle.TLabel").pack()
 
-        comment_frame = ttk.Frame(self.right_panel, style="Panel.TFrame")
+        comment_frame = ttk.Frame(operations_tab, style="Panel.TFrame")
         comment_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         self.commentary_text = scrolledtext.ScrolledText(
@@ -417,12 +479,12 @@ class ApertureEnrichmentCenterGUI:
         self.commentary_text.pack(fill="both", expand=True)
         self.commentary_text.configure(insertbackground=ApertureTheme.TEXT_PRIMARY)
 
-        rec_header = ttk.Frame(self.right_panel, style="Panel.TFrame")
-        rec_header.pack(fill="x", padx=10, pady=(10, 5))
+        rec_header = ttk.Frame(operations_tab, style="Panel.TFrame")
+        rec_header.pack(fill="x", padx=10, pady=(0, 5))
 
         ttk.Label(rec_header, text="Acquisition Recommendations", style="PanelBody.TLabel").pack()
 
-        rec_frame = ttk.Frame(self.right_panel, style="Panel.TFrame")
+        rec_frame = ttk.Frame(operations_tab, style="Panel.TFrame")
         rec_frame.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
         self.rec_text = scrolledtext.ScrolledText(
@@ -440,18 +502,23 @@ class ApertureEnrichmentCenterGUI:
         self.rec_text.pack(fill="both", expand=True)
         self.rec_text.configure(insertbackground=ApertureTheme.TEXT_PRIMARY)
 
-        mini_game_panel = ttk.Frame(self.right_panel, style="Panel.TFrame")
-        mini_game_panel.pack(fill="x", padx=10, pady=(0, 10))
+        mini_games_tab = ttk.Frame(notebook, style="Panel.TFrame")
+        notebook.add(mini_games_tab, text="Mini-Games Lab")
+        self.mini_games_tab = mini_games_tab
 
-        ttk.Label(mini_game_panel, text="Mini-Game Simulations", style="PanelTitle.TLabel").pack(anchor="w")
+        lab_header = ttk.Frame(mini_games_tab, style="Panel.TFrame")
+        lab_header.pack(fill="x", padx=10, pady=10)
+
+        ttk.Label(lab_header, text="Mini-Game Simulations", style="PanelTitle.TLabel").pack(anchor="w")
         ttk.Label(
-            mini_game_panel,
-            text="Quickly resume experimental simulations and monitor your progress.",
+            lab_header,
+            text="Train with Aperture-approved simulations to unlock hidden achievements.",
             style="PanelCaption.TLabel",
         ).pack(anchor="w", pady=(4, 0))
+        ttk.Label(lab_header, textvariable=self.mini_game_summary_var, style="PanelBody.TLabel").pack(anchor="w", pady=(8, 0))
 
-        stats_frame = ttk.Frame(mini_game_panel, style="Panel.TFrame")
-        stats_frame.pack(fill="x", pady=(8, 0))
+        stats_frame = ttk.Frame(mini_games_tab, style="Panel.TFrame")
+        stats_frame.pack(fill="x", padx=10, pady=(0, 10))
 
         self.mini_game_stats_vars: Dict[str, tk.StringVar] = {}
         stats_config = [
@@ -468,29 +535,44 @@ class ApertureEnrichmentCenterGUI:
             self.mini_game_stats_vars[key] = var
             ttk.Label(stats_frame, textvariable=var, style="MiniStats.TLabel").pack(anchor="w")
 
-        button_frame = ttk.Frame(mini_game_panel, style="Panel.TFrame")
-        button_frame.pack(fill="x", pady=(10, 0))
+        action_frame = ttk.Frame(mini_games_tab, style="Panel.TFrame")
+        action_frame.pack(fill="x", padx=10, pady=(0, 10))
 
         ttk.Button(
-            button_frame,
-            text="PLAY MINI-GAME",
+            action_frame,
+            text="Launch Simulation",
             style="GLaDOS.TButton",
             command=self.show_tetris,
-            width=18,
+            width=20,
         ).pack(side="left")
 
         ttk.Button(
-            button_frame,
-            text="VIEW DETAILS",
+            action_frame,
+            text="View Achievements",
             style="Aperture.TButton",
             command=self.show_mini_games,
-            width=18,
+            width=20,
+        ).pack(side="left", padx=(10, 0))
+
+        ttk.Button(
+            action_frame,
+            text="Back to Control Feed",
+            style="Aperture.TButton",
+            command=lambda: self.sidebar_notebook.select(operations_tab),
+            width=22,
         ).pack(side="left", padx=(10, 0))
 
     def initialize_features(self) -> None:
         self.commentary_mode.set(self.user_preferences.get("commentary_level", "balanced"))
         self.update_recommendations()
         self.update_mini_game_panel()
+
+        if not REQUESTS_AVAILABLE:
+            self.update_status_var.set("Status: Updates unavailable (missing requests module).")
+        elif not self.update_manager.is_supported():
+            self.update_status_var.set("Status: Updates unavailable in this build.")
+        else:
+            self.update_status_var.set("Status: Ready for diagnostics.")
 
         self.add_commentary("GLaDOS", "Systems online. Ready for testing protocols.", "success")
         if not self.game_manager.get_games():
@@ -511,6 +593,8 @@ class ApertureEnrichmentCenterGUI:
 
         self.user_preferences["last_update_check"] = now
         self.save_preferences()
+
+        self.update_status_var.set("Status: Performing routine update check...")
 
         def _check() -> None:
             result = self.update_manager.check_for_updates()
@@ -881,6 +965,7 @@ class ApertureEnrichmentCenterGUI:
             messagebox.showerror("Error", f"Achievement analysis error: {exc}")
 
     def show_mini_games(self) -> None:
+        self.focus_mini_games_lab()
         dialog = tk.Toplevel(self.root)
         dialog.title("Aperture Mini-Games")
         dialog.geometry("600x520")
@@ -1290,6 +1375,28 @@ class ApertureEnrichmentCenterGUI:
                 var = getattr(self, "mini_game_stats_vars", {}).get(key)
                 if var is not None:
                     var.set(value)
+
+            summary_var = getattr(self, "mini_game_summary_var", None)
+            if summary_var is not None:
+                if stats.get("sessions", 0) == 0:
+                    summary_var.set("No simulation data recorded. Launch the training module to begin telemetry.")
+                else:
+                    summary_var.set(
+                        " | ".join(
+                            [
+                                f"Best score {stats.get('best_score', 0)}",
+                                f"{stats.get('total_lines', 0)} lines cleared",
+                                f"Last attempt {last_played}",
+                            ]
+                        )
+                    )
+        except Exception:
+            pass
+
+    def focus_mini_games_lab(self) -> None:
+        try:
+            if self.sidebar_notebook is not None and self.mini_games_tab is not None:
+                self.sidebar_notebook.select(self.mini_games_tab)
         except Exception:
             pass
 
@@ -1310,17 +1417,21 @@ class ApertureEnrichmentCenterGUI:
 
     def check_for_updates(self) -> None:
         if self.update_check_in_progress:
+            self.update_status_var.set("Status: Update check already running.")
             messagebox.showinfo("Update Check", "An update check is already in progress.")
             return
         if not REQUESTS_AVAILABLE:
+            self.update_status_var.set("Status: Updates unavailable (missing requests module).")
             messagebox.showerror("Update Check", "Requests package unavailable; install 'requests' to enable updates.")
             return
         if not self.update_manager.is_supported():
+            self.update_status_var.set("Status: Updates unavailable in this build.")
             messagebox.showinfo("Update Check", "Auto-update is available only when running from source builds.")
             return
 
         self.update_check_in_progress = True
         self.add_commentary("System", "Checking for updates...")
+        self.update_status_var.set("Status: Checking for updates...")
 
         def _check() -> None:
             result = self.update_manager.check_for_updates()
@@ -1330,6 +1441,15 @@ class ApertureEnrichmentCenterGUI:
 
     def _handle_update_check_result(self, result: UpdateCheckResult, background: bool = False) -> None:
         self.update_check_in_progress = False
+
+        if result.update_available:
+            status_message = f"Update available: v{result.latest_version or '?'}"
+        elif result.success:
+            status_message = result.message
+        else:
+            status_message = f"Update check failed: {result.message}"
+
+        self.update_status_var.set(f"Status: {status_message}")
 
         if not background:
             messagebox.showinfo("Update Check", result.message)
@@ -1347,14 +1467,17 @@ class ApertureEnrichmentCenterGUI:
 
     def download_and_apply_update(self) -> None:
         if self.update_install_in_progress:
+            self.update_status_var.set("Status: Update installation already running.")
             messagebox.showinfo("Update Install", "An update installation is already in progress.")
             return
         if not REQUESTS_AVAILABLE:
+            self.update_status_var.set("Status: Updates unavailable (missing requests module).")
             messagebox.showerror("Update Install", "Requests package unavailable; install 'requests' to enable updates.")
             return
 
         self.update_install_in_progress = True
         self.add_commentary("System", "Downloading update payload...")
+        self.update_status_var.set("Status: Downloading update payload...")
 
         def _download() -> None:
             result = self.update_manager.download_and_apply_update()
@@ -1365,9 +1488,11 @@ class ApertureEnrichmentCenterGUI:
     def _handle_update_install_result(self, result: UpdateApplyResult) -> None:
         self.update_install_in_progress = False
         if result.success:
+            self.update_status_var.set("Status: Update downloaded. Restart to apply.")
             self.add_commentary("System", result.message, "success")
             messagebox.showinfo("Update Install", result.message + "\nPlease restart the launcher to apply changes.")
         else:
+            self.update_status_var.set(f"Status: Update failed - {result.message}")
             self.add_commentary("System", result.message, "error")
             messagebox.showerror("Update Install", result.message)
 
