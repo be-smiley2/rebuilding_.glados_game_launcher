@@ -167,9 +167,11 @@ def main() -> None:
     print("\033[33mWelcome to the Aperture Science Enrichment Center Game Launcher!\033[0m")
 
     if input("what you want me to do?") == "check for games":
+        print("\033[32m")
         libraries = discover_steam_libraries()
         games = find_installed_games(libraries)
         print_game_report(games)
+        print("\033[0m")
     else:
         print("Unknown command. Try typing 'check for games'.")
 
