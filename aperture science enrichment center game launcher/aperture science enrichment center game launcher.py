@@ -221,7 +221,7 @@ def main() -> None:
 
     command = input("What you want me to do? ").strip().lower()
 
-    if command in {"check for games", "games"}:
+    if command in {"check for games", "scan", "games"}:
         print("\033[32m")
         libraries = discover_steam_libraries()
         games = find_installed_games(libraries)
