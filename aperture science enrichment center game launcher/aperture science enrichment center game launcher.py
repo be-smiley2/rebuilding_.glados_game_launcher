@@ -9,12 +9,24 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Sequence
 
 
 EXCLUDED_APP_IDS = {"228980"}
+
+EXECUTABLE_SUFFIXES = {
+    ".exe",
+    ".bat",
+    ".cmd",
+    ".sh",
+    ".appimage",
+    ".x86",
+    ".x86_64",
+    ".bin",
+}
 
 
 @dataclass
@@ -161,19 +173,139 @@ def print_game_report(games: Sequence[SteamGame]) -> None:
         print(f"- {game.pretty()}\n")
 
 
+def is_launchable(path: Path) -> bool:
+    """Return ``True`` if *path* looks like a launchable executable."""
+
+    if path.suffix.lower() in EXECUTABLE_SUFFIXES:
+        return True
+
+    if path.is_file() and os.access(path, os.X_OK) and not path.suffix:
+        return True
+
+    return False
+
+
+def discover_game_executables(install_dir: Path, max_depth: int = 2, limit: int = 20) -> List[Path]:
+    """Return a list of plausible executables within *install_dir*."""
+
+    if not install_dir.exists():
+        return []
+
+    executables: List[Path] = []
+
+    for root, dirs, files in os.walk(install_dir):
+        try:
+            rel_parts = Path(root).relative_to(install_dir).parts
+        except ValueError:
+            rel_parts = ()
+
+        if len(rel_parts) > max_depth:
+            dirs[:] = []
+            continue
+
+        for file in files:
+            candidate = Path(root) / file
+            if is_launchable(candidate):
+                executables.append(candidate)
+                if len(executables) >= limit:
+                    return sorted(executables)
+
+    return sorted(executables)
+
+
+def choose_from_list(options: Sequence[str], prompt: str) -> int | None:
+    """Prompt the user to pick from *options* and return the index or ``None``."""
+
+    while True:
+        response = input(prompt).strip()
+        if not response or response.lower() in {"q", "quit", "exit"}:
+            return None
+
+        if response.isdigit():
+            idx = int(response) - 1
+            if 0 <= idx < len(options):
+                return idx
+
+        print("Please enter a valid number from the list or press Enter to cancel.")
+
+
+def launch_game(game: SteamGame) -> None:
+    """Attempt to launch *game* by running one of its executables."""
+
+    executables = discover_game_executables(game.install_dir)
+
+    if not executables:
+        print("No launchable executables were found in this game's installation directory.")
+        print("Try launching it manually from:")
+        print(f"    {game.install_dir}")
+        return
+
+    if len(executables) == 1:
+        selection = executables[0]
+    else:
+        print("Select an executable to run:")
+        for idx, option in enumerate(executables, 1):
+            rel = option.relative_to(game.install_dir)
+            print(f"  [{idx}] {rel}")
+
+        if len(executables) >= 20:
+            print("  ... list truncated. Refine your search if your desired executable is missing.")
+
+        choice = choose_from_list(
+            [str(path) for path in executables],
+            "Enter the number of the executable to launch (or press Enter to cancel): ",
+        )
+
+        if choice is None:
+            print("Launch cancelled.")
+            return
+
+        selection = executables[choice]
+
+    try:
+        subprocess.Popen([str(selection)], cwd=selection.parent)
+    except OSError as exc:
+        print(f"Failed to launch the game: {exc}")
+        return
+
+    print(f"Launching '{game.name}' using {selection}... Enjoy!")
+
+
 def main() -> None:
     """Entry point for the command line application."""
 
     print("\033[33mWelcome to the Aperture Science Enrichment Center Game Launcher!")
+    print("Type 'scan' to search for installed games, or press Enter to exit.\033[0m")
 
-    if input("What you want me to do?") == "check for games" or "games":
-        print("\033[32m")
-        libraries = discover_steam_libraries()
-        games = find_installed_games(libraries)
-        print_game_report(games)
-        print("\033[0m")
-    else:
-        print("Unknown command. Try typing 'check for games'.")
+    while True:
+        command = input("What do you want me to do? ").strip().lower()
+
+        if not command:
+            print("Goodbye.")
+            return
+
+        if command in {"scan", "check", "check for games", "games"}:
+            print("\033[32mScanning for Steam libraries...\033[0m")
+            libraries = discover_steam_libraries()
+            games = find_installed_games(libraries)
+
+            if not games:
+                print("No games were found. Make sure your Steam libraries are accessible.")
+                continue
+
+            print_game_report(games)
+
+            print("Enter the number of a game to launch it, or press Enter to skip.")
+            options = [game.pretty() for game in games]
+            selection = choose_from_list(options, "Launch which game? ")
+
+            if selection is None:
+                print("No game selected.")
+                continue
+
+            launch_game(games[selection])
+        else:
+            print("Unknown command. Try typing 'scan' to search for games or press Enter to exit.")
 
 
 if __name__ == "__main__":
