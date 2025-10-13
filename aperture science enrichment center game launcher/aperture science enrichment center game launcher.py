@@ -14,6 +14,9 @@ from pathlib import Path
 from typing import Iterable, List, Sequence
 
 
+EXCLUDED_APP_IDS = {"228980"}
+
+
 @dataclass
 class SteamGame:
     """Simple representation of a Steam game installation."""
@@ -139,7 +142,7 @@ def find_installed_games(libraries: Iterable[Path]) -> List[SteamGame]:
         manifest_paths = sorted(library.glob("appmanifest_*.acf"))
         for manifest in manifest_paths:
             game = parse_manifest(manifest)
-            if game is not None:
+            if game is not None and game.app_id not in EXCLUDED_APP_IDS:
                 games.append(game)
 
     return games
