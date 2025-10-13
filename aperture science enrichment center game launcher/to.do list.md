@@ -10,6 +10,6 @@ add a setting for swiching ai roasting mode\[]
 add a tab for my media\[]
 
 ***AI ROASTING***
-make "GlaDOS" roast windows.etc within the program\[]
-make "killer frost/caitlin snow" roast windows.etc within the program\[]
+make "GlaDOS" roast windows.etc within the program\[✔️]
+make "killer frost/caitlin snow" roast windows.etc within the program\[✔️]
 make a fun buddy ai(need to give it a mane)\[]
