@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Sequence
@@ -157,8 +159,59 @@ def print_game_report(games: Sequence[SteamGame]) -> None:
         return
 
     print(f"Found {len(games)} Steam game(s):\n")
-    for game in games:
-        print(f"- {game.pretty()}\n")
+    for index, game in enumerate(games, start=1):
+        print(f"{index}. {game.pretty()}\n")
+
+
+def launch_game(game: SteamGame) -> bool:
+    """Launch the given Steam game using the system Steam handler."""
+
+    uri = f"steam://run/{game.app_id}"
+
+    if sys.platform.startswith("win"):
+        command = ["cmd", "/c", "start", "", uri]
+    elif sys.platform.startswith("darwin"):
+        command = ["open", uri]
+    else:
+        command = ["xdg-open", uri]
+
+    try:
+        subprocess.run(command, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        print(f"Failed to launch {game.name}: {exc}")
+        return False
+
+    return True
+
+
+def prompt_for_launch(games: Sequence[SteamGame]) -> None:
+    """Prompt the user to pick a game to launch via Steam."""
+
+    if not games:
+        return
+
+    while True:
+        choice = input(
+            "Enter the number of a game to launch it (or press Enter to exit): "
+        ).strip()
+
+        if choice == "":
+            break
+
+        if not choice.isdigit():
+            print("Please enter a valid number.")
+            continue
+
+        index = int(choice)
+        if not 1 <= index <= len(games):
+            print("That number is out of range.")
+            continue
+
+        game = games[index - 1]
+        print(f"Launching {game.name}...")
+        if launch_game(game):
+            print("Launch command sent to Steam. Enjoy your game!")
+        break
 
 
 def main() -> None:
@@ -166,11 +219,14 @@ def main() -> None:
 
     print("\033[33mWelcome to the Aperture Science Enrichment Center Game Launcher!")
 
-    if input("What you want me to do?") == "check for games" or "games":
+    command = input("What you want me to do? ").strip().lower()
+
+    if command in {"check for games", "games"}:
         print("\033[32m")
         libraries = discover_steam_libraries()
         games = find_installed_games(libraries)
         print_game_report(games)
+        prompt_for_launch(games)
         print("\033[0m")
     else:
         print("Unknown command. Try typing 'check for games'.")
