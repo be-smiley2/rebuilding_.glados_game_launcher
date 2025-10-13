@@ -164,9 +164,9 @@ def print_game_report(games: Sequence[SteamGame]) -> None:
 def main() -> None:
     """Entry point for the command line application."""
 
-    print("\033[33mWelcome to the Aperture Science Enrichment Center Game Launcher!\033[0m")
+    print("\033[33mWelcome to the Aperture Science Enrichment Center Game Launcher!")
 
-    if input("what you want me to do?") == "check for games":
+    if input("What you want me to do?") == "check for games" or "games":
         print("\033[32m")
         libraries = discover_steam_libraries()
         games = find_installed_games(libraries)
