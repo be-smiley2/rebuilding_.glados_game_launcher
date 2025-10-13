@@ -170,7 +170,12 @@ def print_game_report(games: Sequence[SteamGame]) -> None:
 
     print(f"Found {len(games)} Steam game(s):\n")
     for idx, game in enumerate(games, start=1):
-        print(f"{idx}. {game.pretty()}\n")
+        lines = game.pretty().splitlines()
+        prefix = f"{idx}. "
+        print(f"{prefix}{lines[0]}")
+        for line in lines[1:]:
+            print(f"{' ' * len(prefix)}{line}")
+        print()
 
 
 def is_launchable(path: Path) -> bool:
