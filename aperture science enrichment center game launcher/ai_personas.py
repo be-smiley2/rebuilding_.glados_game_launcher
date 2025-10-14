@@ -35,6 +35,7 @@ class Persona:
     game_roasts: Sequence[str]
     no_games_roast: str
     openrouter_system_prompt: str | None = None
+    enable_openrouter: bool = True
 
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -269,6 +270,9 @@ def generate_openrouter_roast(
     returned so callers can fall back to the local, static roast lines.
     """
 
+    if not persona.enable_openrouter:
+        return None
+
     api_key = get_openrouter_api_key()
     if not api_key:
         return None
@@ -374,6 +378,7 @@ _register_persona(
             " professional, clinical, and unfailingly polite while delivering dry"
             " humor that reinforces corporate testing culture."
         ),
+        enable_openrouter=False,
     )
 )
 
