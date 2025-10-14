@@ -45,7 +45,9 @@ class Persona:
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+FREE_MODELS_FILE = Path(__file__).with_name("openrouter ai models.py")
 _FREE_MODEL_CACHE: list[str] | None = None
+_HAS_WARNED_MISSING_KEY = False
 
 
 def _read_api_key_file(path: Path) -> str | None:
@@ -110,6 +112,24 @@ def _read_key_from_keyring() -> str | None:
         return None
 
     return secret.strip() if secret else None
+
+
+def _load_local_free_models() -> list[str]:
+    """Return model slugs stored in the repository list when available."""
+
+    try:
+        text = FREE_MODELS_FILE.read_text(encoding="utf-8")
+    except OSError:
+        return []
+
+    models: list[str] = []
+    for line in text.splitlines():
+        slug = line.strip()
+        if not slug or slug.startswith("#"):
+            continue
+        models.append(slug)
+
+    return models
 
 
 def get_openrouter_api_key() -> str | None:
@@ -234,7 +254,7 @@ def _is_pricing_free(pricing: Dict[str, Any] | None) -> bool:
         return False
 
     seen_any = False
-    for key in ("prompt", "completion", "request"):
+    for key in ("prompt", "completion", "request", "image"):
         price = _parse_price(pricing.get(key))
         if price is None:
             continue
@@ -253,6 +273,8 @@ def fetch_free_openrouter_models(refresh: bool = False) -> list[str]:
     if not refresh and _FREE_MODEL_CACHE is not None:
         return _FREE_MODEL_CACHE
 
+    local_models = _load_local_free_models()
+
     api_key = get_openrouter_api_key()
     headers = {}
     if api_key:
@@ -264,11 +286,15 @@ def fetch_free_openrouter_models(refresh: bool = False) -> list[str]:
         with request.urlopen(http_request, timeout=10) as response:
             raw = response.read().decode("utf-8")
     except (error.HTTPError, error.URLError, TimeoutError, socket.timeout):
+        if _FREE_MODEL_CACHE is None:
+            _FREE_MODEL_CACHE = local_models
         return _FREE_MODEL_CACHE or []
 
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
+        if _FREE_MODEL_CACHE is None:
+            _FREE_MODEL_CACHE = local_models
         return _FREE_MODEL_CACHE or []
 
     models = payload.get("data") or []
@@ -287,6 +313,8 @@ def fetch_free_openrouter_models(refresh: bool = False) -> list[str]:
     if free_slugs:
         free_slugs.sort()
         _FREE_MODEL_CACHE = free_slugs
+    elif _FREE_MODEL_CACHE is None:
+        _FREE_MODEL_CACHE = local_models
 
     return _FREE_MODEL_CACHE or []
 
@@ -317,6 +345,10 @@ def resolve_openrouter_model(preferred: str | None = None) -> str | None:
                 return slug
         free_models = refreshed
 
+        fallback = next((slug for slug in candidates if slug.endswith(":free")), None)
+        if fallback:
+            return fallback
+
     if free_models:
         return free_models[0]
 
@@ -340,6 +372,13 @@ def generate_openrouter_roast(
 
     api_key = get_openrouter_api_key()
     if not api_key:
+        global _HAS_WARNED_MISSING_KEY
+        if not _HAS_WARNED_MISSING_KEY:
+            print(
+                "OpenRouter API key not found. Set OPENROUTER_API_KEY to enable dynamic roasts.",
+                file=sys.stderr,
+            )
+            _HAS_WARNED_MISSING_KEY = True
         return None
 
     system_prompt = persona.openrouter_system_prompt or (
