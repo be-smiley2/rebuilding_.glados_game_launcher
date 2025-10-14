@@ -11,7 +11,14 @@ from dataclasses import dataclass
 from typing import Any, Dict, Sequence
 from urllib import error, request
 
-from ansi_colors import CAITLIN_SNOW, CLAPTRAP, FLASH, GLADOS, KILLER_FROST
+from ansi_colors import (
+    CAITLIN_SNOW,
+    CLAPTRAP,
+    FLASH,
+    GLADOS,
+    KILLER_FROST,
+    SYSTEM_HEADER,
+)
 
 
 @dataclass
@@ -102,7 +109,7 @@ def roast_games(persona: Persona, games: Sequence[Any]) -> None:
 
 
 PERSONAS: Dict[str, Persona] = {}
-DEFAULT_PERSONA_KEY = "glados"
+DEFAULT_PERSONA_KEY = "aperture-system"
 
 
 def _register_persona(persona: Persona) -> None:
@@ -174,6 +181,55 @@ def generate_openrouter_roast(
     if isinstance(content, str):
         return content.strip()
     return None
+
+
+_register_persona(
+    Persona(
+        key="aperture-system",
+        name="Aperture Science Enrichment Centre System",
+        aliases=[
+            "aperture-system",
+            "system",
+            "aperture",
+            "asec",
+        ],
+        color=SYSTEM_HEADER,
+        intro=(
+            "Hello and welcome to the Aperture Science Enrichment Centre Game Launcher."
+        ),
+        os_roasts={
+            "Windows": (
+                "Operating on Windows. Monitoring for spontaneous restarts and cake-"
+                " related excuses."
+            ),
+            "macOS": (
+                "macOS environment detected. Polishing portals for maximum aesthetic"
+                " compliance."
+            ),
+            "Linux": (
+                "Linux configuration confirmed. Scheduling kernel calibrations for"
+                " optimal testing."
+            ),
+            "default": (
+                "{os} verified. Logging compatibility metrics for Aperture archives."
+            ),
+        },
+        game_roasts=[
+            "Queuing {game}. Remember: testing may continue until morale improves.",
+            "{game} selected. Deploying encouragement turrets at safe distances.",
+            "Initializing {game}. Failure to enjoy the experience will be recorded.",
+        ],
+        no_games_roast=(
+            "No installed games located. Please acquire test materials before"
+            " proceeding."
+        ),
+        openrouter_system_prompt=(
+            "You are the Aperture Science Enrichment Centre system voice. You are"
+            " professional, clinical, and unfailingly polite while delivering dry"
+            " humor that reinforces corporate testing culture."
+        ),
+    )
+)
 
 
 _register_persona(

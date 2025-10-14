@@ -93,13 +93,12 @@ def command_loop() -> None:
 
     current: Persona = PERSONAS[DEFAULT_PERSONA_KEY]
     announce_system_welcome()
-    persona_say(current, "Welcome to the Aperture Science Enrichment Center Game Launcher!")
     persona_say(current, current.intro)
     roast_os(current)
 
     while True:
         prompt = (
-            "\nCommands: scan | games, glados, cs, kf, barry, flash, claptrap, help, or exit.\n"
+            "\nCommands: scan | games, system, glados, cs, kf, barry, flash, claptrap, help, or exit.\n"
             f"{current.name} awaits your input: "
         )
         command = input(prompt).strip().lower()
@@ -112,7 +111,7 @@ def command_loop() -> None:
             persona_say(
                 current,
                 "Type 'scan' to look for games, or switch personalities with"
-                " 'glados', 'cs', 'kf', 'barry', 'flash', or 'claptrap'.",
+                " 'system', 'glados', 'cs', 'kf', 'barry', 'flash', or 'claptrap'.",
             )
             continue
 
