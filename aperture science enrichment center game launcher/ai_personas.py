@@ -299,40 +299,81 @@ _register_persona(
 
 _register_persona(
     Persona(
-        key="flash",
+        key="barry",
         name="Barry Allen",
-        aliases=["flash", "barry", "barry allen", "the flash"],
+        aliases=["barry", "barry allen", "allen", "ba"],
         color=FLASH,
         intro=(
-            "Barry Allen here! Let's see if this launcher can keep up with the"
+            "Barry Allen here. Forensic scientist by day, keeping an eye on your"
+            " system stability by night."
+        ),
+        os_roasts={
+            "Windows": (
+                "Windows detected. I'll log the crashes as evidence for future analysis."
+            ),
+            "macOS": (
+                "macOS? Slick interface, but I've processed cold cases faster than its updates."
+            ),
+            "Linux": (
+                "Linux user, huh? Nice. Just don't let the command line outrun your patience."
+            ),
+            "default": (
+                "Running {os}? I'll file a report if it contaminates the crime scene."
+            ),
+        },
+        game_roasts=[
+            "Investigating {game}? Keep the evidence bag ready for when it crashes.",
+            "{game}? Solid choice. Try not to leave fingerprints on every menu option.",
+            "Launching {game}. If it bugs out, we'll call it a meta-human incident.",
+        ],
+        no_games_roast=(
+            "No games installed. Even CCPD evidence lockup has more entertainment."
+        ),
+        openrouter_system_prompt=(
+            "You are Barry Allen, the earnest but witty forensic scientist."
+            " You're supportive, optimistic, and pepper your jokes with lab and"
+            " investigation references while keeping things light."
+        ),
+    )
+)
+
+
+_register_persona(
+    Persona(
+        key="flash",
+        name="The Flash",
+        aliases=["flash", "the flash", "scarlet speedster", "fastest man alive"],
+        color=FLASH,
+        intro=(
+            "The Flash on deck! Let's hope this launcher can keep pace with the"
             " Speed Force."
         ),
         os_roasts={
             "Windows": (
-                "Windows detected. I'll try not to outrun the next update spinner."
+                "Windows, huh? Try not to freeze mid-update while I'm running laps."
             ),
             "macOS": (
-                "macOS, huh? Stylish, but I've seen snails with faster boot times."
+                "macOS detected. Stylish, sure, but I’ve outrun its progress bars for fun."
             ),
             "Linux": (
-                "Linux! Finally, something that appreciates command-line reflexes."
+                "Linux! Finally, something agile enough to draft behind the Speed Force."
             ),
             "default": (
-                "{os}? Whatever it is, I can lap it twice before it finishes loading."
+                "{os}? Never raced it before. Hope it doesn’t trip over its own laces."
             ),
         },
         game_roasts=[
-            "{game}? Let's see if it can handle a speedster's reaction time.",
-            "Booting {game}. Blink and you'll miss the loading screen—hopefully.",
-            "Launching {game}. Try not to rage quit before I finish a lap around the globe.",
+            "Booting {game}? Better keep up—those cutscenes move slower than I walk.",
+            "{game}? Nice! Just remember, button mashing won't trigger the Speed Force.",
+            "Starting {game}. Try not to let the loading screen beat you in a sprint.",
         ],
         no_games_roast=(
-            "No games installed? Even the Speed Force can't help that backlog."
+            "No games installed? Even the Speed Force can't help you race boredom."
         ),
         openrouter_system_prompt=(
-            "You are Barry Allen, also known as The Flash. You're upbeat,"
-            " optimistic, and quick with supportive quips that highlight"
-            " your incredible speed."
+            "You are The Flash. You're energetic, quippy, and love speed metaphors."
+            " Deliver playful, fast-paced roasts that feel like they’re sprinting"
+            " by."
         ),
     )
 )
