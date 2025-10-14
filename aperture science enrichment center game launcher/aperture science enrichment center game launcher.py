@@ -18,13 +18,23 @@ from ai_personas import (
     roast_games,
     roast_os,
 )
-from ansi_colors import  SYSTEM_ALERT, SYSTEM_PRIMARY, SYSTEM_SUCCESS
+from ansi_colors import APERTURE_SYSTEM, SYSTEM_ALERT, SYSTEM_PRIMARY, SYSTEM_SUCCESS
 from steam_scanner import (
     SteamGame,
     discover_steam_libraries,
     find_installed_games,
     print_game_report,
 )
+
+
+def announce_system_welcome() -> None:
+    """Display the Aperture Science system greeting."""
+
+    message = (
+        "Aperture Science Enrichment Centre System: "
+        "Hello and welcome to the Aperture Science Enrichment Centre Game Launcher."
+    )
+    print(f"{APERTURE_SYSTEM}{message}")
 
 
 def launch_game(game: SteamGame) -> bool:
@@ -82,13 +92,13 @@ def command_loop() -> None:
     """Main interactive loop supporting persona switching and roasting."""
 
     current: Persona = PERSONAS[DEFAULT_PERSONA_KEY]
-    persona_say(current, "Welcome to the Aperture Science Enrichment Center Game Launcher!")
+    announce_system_welcome()
     persona_say(current, current.intro)
     roast_os(current)
 
     while True:
         prompt = (
-            "\nCommands: scan | games, glados, cs, kf, help, or exit.\n"
+            "\nCommands: scan | games, system, glados, cs, kf, barry, flash, claptrap, help, or exit.\n"
             f"{current.name} awaits your input: "
         )
         command = input(prompt).strip().lower()
@@ -101,7 +111,7 @@ def command_loop() -> None:
             persona_say(
                 current,
                 "Type 'scan' to look for games, or switch personalities with"
-                " 'glados', 'cs', or 'kf'.",
+                " 'system', 'glados', 'cs', 'kf', 'barry', 'flash', or 'claptrap'.",
             )
             continue
 
