@@ -12,12 +12,12 @@ from typing import Any, Dict, Sequence
 from urllib import error, request
 
 from ansi_colors import (
+    APERTURE_SYSTEM,
     CAITLIN_SNOW,
     CLAPTRAP,
     FLASH,
     GLADOS,
     KILLER_FROST,
-    SYSTEM_HEADER,
 )
 
 
@@ -193,7 +193,7 @@ _register_persona(
             "aperture",
             "asec",
         ],
-        color=SYSTEM_HEADER,
+        color=APERTURE_SYSTEM,
         intro=(
             "Hello and welcome to the Aperture Science Enrichment Centre Game Launcher."
         ),

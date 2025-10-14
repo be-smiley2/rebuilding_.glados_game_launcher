@@ -18,7 +18,7 @@ from ai_personas import (
     roast_games,
     roast_os,
 )
-from ansi_colors import SYSTEM_ALERT, SYSTEM_HEADER, SYSTEM_PRIMARY, SYSTEM_SUCCESS
+from ansi_colors import APERTURE_SYSTEM, SYSTEM_ALERT, SYSTEM_PRIMARY, SYSTEM_SUCCESS
 from steam_scanner import (
     SteamGame,
     discover_steam_libraries,
@@ -34,7 +34,7 @@ def announce_system_welcome() -> None:
         "Aperture Science Enrichment Centre System: "
         "Hello and welcome to the Aperture Science Enrichment Centre Game Launcher."
     )
-    print(f"{SYSTEM_HEADER}{message}")
+    print(f"{APERTURE_SYSTEM}{message}")
 
 
 def launch_game(game: SteamGame) -> bool:
