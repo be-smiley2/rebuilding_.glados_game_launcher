@@ -21,6 +21,11 @@ from ansi_colors import (
     KILLER_FROST,
 )
 
+try:  # Optional dependency for secure key storage
+    import keyring  # type: ignore[import]
+except ImportError:  # pragma: no cover - optional dependency
+    keyring = None  # type: ignore[assignment]
+
 
 @dataclass
 class Persona:
@@ -55,6 +60,58 @@ def _read_api_key_file(path: Path) -> str | None:
     return key or None
 
 
+def _read_key_from_env_file(key_name: str) -> str | None:
+    """Return ``key_name`` from nearby dotenv files when present."""
+
+    env_override = os.getenv("OPENROUTER_ENV_FILE")
+    candidates = []
+    if env_override:
+        candidates.append(Path(env_override).expanduser())
+
+    module_dir = Path(__file__).resolve().parent
+    candidates.append(module_dir / ".env")
+    parent_env = module_dir.parent / ".env"
+    if parent_env not in candidates:
+        candidates.append(parent_env)
+
+    for path in candidates:
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+            name, value = stripped.split("=", 1)
+            if name.strip() != key_name:
+                continue
+            candidate = value.strip().strip('"').strip("'")
+            return candidate or None
+
+    return None
+
+
+def _read_key_from_keyring() -> str | None:
+    """Attempt to fetch the API key using the OS keyring when available."""
+
+    if keyring is None:
+        return None
+
+    service = os.getenv("OPENROUTER_KEYRING_SERVICE", "openrouter")
+    username = os.getenv("OPENROUTER_KEYRING_USERNAME", "aperture_launcher")
+    if not service or not username:
+        return None
+
+    try:
+        secret = keyring.get_password(service, username)
+    except Exception:
+        return None
+
+    return secret.strip() if secret else None
+
+
 def get_openrouter_api_key() -> str | None:
     """Return the OpenRouter API key from the environment or helper files."""
 
@@ -62,12 +119,20 @@ def get_openrouter_api_key() -> str | None:
     if api_key:
         return api_key.strip() or None
 
+    api_key = _read_key_from_keyring()
+    if api_key:
+        return api_key
+
     file_override = os.getenv("OPENROUTER_API_KEY_FILE")
     if file_override:
         key_path = Path(file_override).expanduser()
         key = _read_api_key_file(key_path)
         if key:
             return key
+
+    api_key = _read_key_from_env_file("OPENROUTER_API_KEY")
+    if api_key:
+        return api_key
 
     local_path = Path(__file__).with_name("openrouter_api_key.txt")
     return _read_api_key_file(local_path)
