@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Dict, Sequence
 
-from ansi_colors import CAITLIN_SNOW, GLADOS, KILLER_FROST
+from ansi_colors import CAITLIN_SNOW, GLADOS, KILLER_FROST, Aperture_system
 
 
 @dataclass
