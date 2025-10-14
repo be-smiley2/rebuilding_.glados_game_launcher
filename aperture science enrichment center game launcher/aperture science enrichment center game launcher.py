@@ -18,13 +18,23 @@ from ai_personas import (
     roast_games,
     roast_os,
 )
-from ansi_colors import  SYSTEM_ALERT, SYSTEM_PRIMARY, SYSTEM_SUCCESS
+from ansi_colors import SYSTEM_ALERT, SYSTEM_HEADER, SYSTEM_PRIMARY, SYSTEM_SUCCESS
 from steam_scanner import (
     SteamGame,
     discover_steam_libraries,
     find_installed_games,
     print_game_report,
 )
+
+
+def announce_system_welcome() -> None:
+    """Display the Aperture Science system greeting."""
+
+    message = (
+        "Aperture Science Enrichment Centre System: "
+        "Hello and welcome to the Aperture Science Enrichment Centre Game Launcher."
+    )
+    print(f"{SYSTEM_HEADER}{message}")
 
 
 def launch_game(game: SteamGame) -> bool:
@@ -82,6 +92,7 @@ def command_loop() -> None:
     """Main interactive loop supporting persona switching and roasting."""
 
     current: Persona = PERSONAS[DEFAULT_PERSONA_KEY]
+    announce_system_welcome()
     persona_say(current, "Welcome to the Aperture Science Enrichment Center Game Launcher!")
     persona_say(current, current.intro)
     roast_os(current)
