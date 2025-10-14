@@ -176,54 +176,104 @@ def persona_say(persona: Persona, message: str) -> None:
     print(f"{persona.color}{message}")
 
 
+def compose_os_roast(persona: Persona, allow_dynamic: bool = True) -> str:
+    """Return the roast a persona would deliver for the current operating system."""
+
+    os_name = detect_os_name()
+    dynamic = None
+    if allow_dynamic:
+        dynamic = generate_openrouter_roast(
+            persona,
+            (
+                "The user is running {os} as their operating system."
+                " Deliver a concise roast in your trademark voice."
+            ).format(os=os_name),
+        )
+    if dynamic:
+        return dynamic
+
+    template = persona.os_roasts.get(os_name) or persona.os_roasts.get("default")
+    if template:
+        return template.format(os=os_name)
+    return f"{persona.name} is temporarily speechless about {os_name}."
+
+
+def compose_game_roasts(
+    persona: Persona, games: Sequence[Any], allow_dynamic: bool = True
+) -> list[str]:
+    """Return the roast lines a persona would deliver for the supplied games."""
+
+    if not games:
+        dynamic = None
+        if allow_dynamic:
+            dynamic = generate_openrouter_roast(
+                persona,
+                "Roast the user for having no games installed in their Steam library.",
+            )
+        if dynamic:
+            return [dynamic]
+        return [persona.no_games_roast]
+
+    lines: list[str] = []
+    for game in games:
+        name = getattr(game, "name", str(game))
+        dynamic = None
+        if allow_dynamic:
+            dynamic = generate_openrouter_roast(
+                persona,
+                (
+                    "Roast the user for preparing to launch the game {game}."
+                    " Keep it playful, a single sentence, and unmistakably in your voice."
+                ).format(game=name),
+            )
+        if dynamic:
+            lines.append(dynamic)
+        else:
+            template = random.choice(persona.game_roasts)
+            lines.append(template.format(game=name))
+
+    return lines
+
+
+def compose_chat_reply(
+    persona: Persona, user_message: str, allow_dynamic: bool = True
+) -> str:
+    """Return a short persona-flavoured reply for the given chat message."""
+
+    cleaned = user_message.strip() or "..."
+    if allow_dynamic:
+        dynamic = generate_openrouter_roast(
+            persona,
+            (
+                "The user says: \"{message}\"."
+                " Reply as {name} in one or two sentences, keeping your signature tone."
+            ).format(message=cleaned, name=persona.name),
+        )
+        if dynamic:
+            return dynamic
+
+    fallback_templates = [
+        "{name}: Noted. Try not to let '{topic}' trigger the turret defenses.",
+        "{name} contemplates '{topic}' and files it under 'interesting test results'.",
+        "Regarding '{topic}', {name} recommends minimal property damage.",
+        "{name} heard '{topic}'. Laboratory sarcasm buffer engaged.",
+        "Message '{topic}' received. {name} assures you the neurotoxin emitters remain offline. For now.",
+    ]
+    template = random.choice(fallback_templates)
+    return template.format(name=persona.name, topic=cleaned)
+
+
 def roast_os(persona: Persona) -> None:
     """Deliver an operating-system specific roast from the persona."""
 
-    os_name = detect_os_name()
-    dynamic = generate_openrouter_roast(
-        persona,
-        (
-            "The user is running {os} as their operating system."
-            " Deliver a concise roast in your trademark voice."
-        ).format(os=os_name),
-    )
-    if dynamic:
-        persona_say(persona, dynamic)
-        return
-
-    message = persona.os_roasts.get(os_name, persona.os_roasts.get("default", ""))
-    if message:
-        persona_say(persona, message.format(os=os_name))
+    persona_say(persona, compose_os_roast(persona))
 
 
 def roast_games(persona: Persona, games: Sequence[Any]) -> None:
     """Deliver roasts targeted at the discovered games."""
 
-    if not games:
-        dynamic = generate_openrouter_roast(
-            persona,
-            "Roast the user for having no games installed in their Steam library.",
-        )
-        if dynamic:
-            persona_say(persona, dynamic)
-        else:
-            persona_say(persona, persona.no_games_roast)
-        return
-
-    for game in games:
-        name = getattr(game, "name", str(game))
-        dynamic = generate_openrouter_roast(
-            persona,
-            (
-                "Roast the user for preparing to launch the game {game}."
-                " Keep it playful, a single sentence, and unmistakably in your voice."
-            ).format(game=name),
-        )
-        if dynamic:
-            persona_say(persona, dynamic)
-        else:
-            line = random.choice(persona.game_roasts).format(game=name)
-            persona_say(persona, line)
+    for line in compose_game_roasts(persona, games):
+        persona_say(persona, line)
 
 
 PERSONAS: Dict[str, Persona] = {}
