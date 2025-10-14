@@ -88,7 +88,7 @@ def command_loop() -> None:
 
     while True:
         prompt = (
-            "\nCommands: scan | games, glados, cs, kf, help, or exit.\n"
+            "\nCommands: scan | games, glados, cs, kf, flash, claptrap, help, or exit.\n"
             f"{current.name} awaits your input: "
         )
         command = input(prompt).strip().lower()
@@ -101,7 +101,7 @@ def command_loop() -> None:
             persona_say(
                 current,
                 "Type 'scan' to look for games, or switch personalities with"
-                " 'glados', 'cs', or 'kf'.",
+                " 'glados', 'cs', 'kf', 'flash', or 'claptrap'.",
             )
             continue
 
