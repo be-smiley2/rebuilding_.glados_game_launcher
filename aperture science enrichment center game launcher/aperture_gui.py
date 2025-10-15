@@ -740,7 +740,7 @@ class ApertureLauncherGUI(tk.Tk):
                     raise ValueError("OpenRouter response did not include text content.")
                 content = content.strip()
             except Exception as exc:  # pragma: no cover - network dependent
-                self.after(0, lambda: on_complete(exc, None))
+                self.after(0, lambda exc=exc: on_complete(exc, None))
                 return
 
             self.after(0, lambda: on_complete(None, content))
