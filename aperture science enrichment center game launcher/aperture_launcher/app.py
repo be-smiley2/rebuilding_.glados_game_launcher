@@ -14,7 +14,9 @@ from steam_scanner import (
 )
 
 from .constants import (
+    CHAT_SPEAKER_COLORS,
     GENERAL_CHAT_MODELS,
+    GENERAL_CHAT_PERSONAS,
     ROASTING_PERSONAS,
     THEME_PALETTES,
 )
@@ -44,17 +46,18 @@ class ApertureLauncherGUI(tk.Tk):
         self.roasting_status_var = tk.StringVar(value="Select a persona to begin the roast.")
         self.api_key_var = tk.StringVar()
         self.general_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
+        self.general_persona_var = tk.StringVar(value=list(GENERAL_CHAT_PERSONAS.keys())[0])
         self.roasting_voice_var = tk.StringVar(value=list(ROASTING_PERSONAS.keys())[0])
 
         self.games: List[SteamGame] = []
         self._text_widgets: List[tk.Text] = []
         self._rng = random.Random()
 
-        self.general_system_prompt = (
-            "You are the Aperture Science Enrichment Center's friendly general-purpose assistant. "
-            "Provide clear, practical, and encouraging help for everyday questions."
-        )
-        self.general_messages: List[Dict[str, str]] = [self._system_message(self.general_system_prompt)]
+        self.general_histories: Dict[str, List[Dict[str, str]]] = {
+            persona: [self._system_message(prompt)]
+            for persona, prompt in GENERAL_CHAT_PERSONAS.items()
+        }
+        self._pending_general_persona: str | None = None
         self.general_busy = False
         self.api_key_valid = False
         self._validated_api_key = ""
@@ -196,6 +199,16 @@ class ApertureLauncherGUI(tk.Tk):
         options = ttk.Frame(parent)
         options.pack(fill="x", padx=24)
 
+        ttk.Label(options, text="Persona:").pack(side="left")
+        persona_menu = ttk.OptionMenu(
+            options,
+            self.general_persona_var,
+            self.general_persona_var.get(),
+            *GENERAL_CHAT_PERSONAS.keys(),
+            command=lambda value: self._load_general_history(value),
+        )
+        persona_menu.pack(side="left", padx=(6, 18))
+
         ttk.Label(options, text="Model:").pack(side="left")
         self.general_model_combo = ttk.Combobox(
             options,
@@ -251,10 +264,7 @@ class ApertureLauncherGUI(tk.Tk):
         )
         self.general_send_button.pack(side="left", padx=(12, 0))
 
-        self._reset_text_widget(
-            self.general_display,
-            "General assistant online. Provide a prompt to begin.",
-        )
+        self._load_general_history(self.general_persona_var.get())
 
     def _build_roasting_chat_tab(self, parent: ttk.Frame) -> None:
         """Create the roasting chatbot interface with persona switching."""
@@ -419,10 +429,24 @@ class ApertureLauncherGUI(tk.Tk):
         state = widget.cget("state")
         if state == "disabled":
             widget.configure(state="normal")
-        widget.insert(tk.END, f"{speaker}: {message}\n\n")
+        tag = self._ensure_chat_tag(widget, speaker)
+        widget.insert(tk.END, f"{speaker}: {message}\n\n", tag)
         if state == "disabled":
             widget.configure(state="disabled")
         widget.see(tk.END)
+
+    def _ensure_chat_tag(self, widget: tk.Text, speaker: str) -> str:
+        """Ensure a text tag exists for the speaker and return it."""
+
+        sanitized = "".join(ch if ch.isalnum() else "_" for ch in speaker)
+        tag_name = f"speaker_{sanitized or 'unknown'}"
+        if tag_name not in widget.tag_names():
+            color = CHAT_SPEAKER_COLORS.get(
+                speaker,
+                CHAT_SPEAKER_COLORS.get("Default", self.style.lookup("TLabel", "foreground")),
+            )
+            widget.tag_configure(tag_name, foreground=color)
+        return tag_name
 
     def _clear_text_widget(self, widget: tk.Text) -> None:
         """Clear all content from a text widget."""
@@ -451,7 +475,12 @@ class ApertureLauncherGUI(tk.Tk):
         self.api_key_apply_button.configure(state=state)
 
         if status is None:
-            status = "Contacting OpenRouter..." if busy else "Ready for your next prompt."
+            persona = self.general_persona_var.get()
+            status = (
+                f"{persona} is contacting OpenRouter..."
+                if busy
+                else f"{persona} ready for your next prompt."
+            )
         self.general_status_var.set(status)
 
     def _invalidate_api_key(self, *_: object) -> None:
@@ -616,12 +645,15 @@ class ApertureLauncherGUI(tk.Tk):
             messagebox.showerror("General Chat", "Select a model before sending.")
             return
 
+        persona = self.general_persona_var.get()
+        history = self._current_general_history()
         self.general_input.delete("1.0", tk.END)
-        self.general_messages.append({"role": "user", "content": content})
-        self._append_chat_message(self.general_display, "You", content)
-        self._set_general_busy(True, "Contacting OpenRouter...")
+        history.append({"role": "user", "content": content})
+        self._append_chat_message(self.general_display, "Test Subject", content)
+        self._set_general_busy(True, f"{persona} is formulating a response...")
 
-        payload = [dict(message) for message in self.general_messages]
+        payload = [dict(message) for message in history]
+        self._pending_general_persona = persona
         request_chat_completion(
             api_key,
             model,
@@ -633,23 +665,34 @@ class ApertureLauncherGUI(tk.Tk):
     def _handle_general_completion(self, error: Exception | None, content: str | None) -> None:
         """Handle the result of a general chat request."""
 
+        persona = self._pending_general_persona or self.general_persona_var.get()
+        history = self.general_histories.setdefault(
+            persona, [self._system_message(GENERAL_CHAT_PERSONAS[persona])]
+        )
+        self._pending_general_persona = None
+
         if error:
-            self._append_chat_message(self.general_display, "System", f"Error: {error}")
+            if persona == self.general_persona_var.get():
+                self._append_chat_message(self.general_display, "System", f"Error: {error}")
             self._set_general_busy(False, "OpenRouter request failed. Try again.")
             return
 
         if content is None:
-            self._append_chat_message(
-                self.general_display,
-                "System",
-                "No response received from OpenRouter.",
-            )
+            if persona == self.general_persona_var.get():
+                self._append_chat_message(
+                    self.general_display,
+                    "System",
+                    "No response received from OpenRouter.",
+                )
             self._set_general_busy(False, "Received an empty response.")
             return
 
-        self.general_messages.append({"role": "assistant", "content": content})
-        self._append_chat_message(self.general_display, "Assistant", content)
-        self._set_general_busy(False, "Response received. Ready for your next prompt.")
+        history.append({"role": "assistant", "content": content})
+        if persona == self.general_persona_var.get():
+            self._append_chat_message(self.general_display, persona, content)
+            self._set_general_busy(False, f"{persona} responded. Ready for your next prompt.")
+        else:
+            self._set_general_busy(False)
 
     def clear_general_conversation(self) -> None:
         """Reset the general assistant conversation."""
@@ -661,13 +704,49 @@ class ApertureLauncherGUI(tk.Tk):
             )
             return
 
-        self.general_messages = [self._system_message(self.general_system_prompt)]
-        self._reset_text_widget(
-            self.general_display,
-            "Conversation cleared. Ready for a new prompt.",
-        )
+        persona = self.general_persona_var.get()
+        self.general_histories[persona] = [
+            self._system_message(GENERAL_CHAT_PERSONAS[persona])
+        ]
+        self._load_general_history(persona)
         self.general_status_var.set("Conversation reset.")
         self.general_input.delete("1.0", tk.END)
+
+    def _current_general_history(self) -> List[Dict[str, str]]:
+        """Return the conversation history for the active general persona."""
+
+        persona = self.general_persona_var.get()
+        if persona not in self.general_histories:
+            self.general_histories[persona] = [
+                self._system_message(GENERAL_CHAT_PERSONAS[persona])
+            ]
+        return self.general_histories[persona]
+
+    def _load_general_history(self, persona: str) -> None:
+        """Refresh the general chat transcript for the selected persona."""
+
+        history = self.general_histories.setdefault(
+            persona, [self._system_message(GENERAL_CHAT_PERSONAS[persona])]
+        )
+        self._clear_text_widget(self.general_display)
+
+        if len(history) == 1:
+            self._append_chat_message(
+                self.general_display,
+                "System",
+                f"{persona} persona online. Provide a prompt to begin.",
+            )
+        else:
+            for message in history[1:]:
+                speaker = "Test Subject" if message["role"] == "user" else persona
+                self._append_chat_message(
+                    self.general_display,
+                    speaker,
+                    message["content"],
+                )
+
+        if not self.general_busy and self.api_key_valid:
+            self.general_status_var.set(f"{persona} ready for conversation.")
 
     def _current_roasting_history(self) -> List[Dict[str, str]]:
         """Return the conversation history for the active roasting persona."""
