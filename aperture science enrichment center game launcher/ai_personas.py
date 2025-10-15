@@ -412,18 +412,18 @@ def compose_chat_reply(
             return dynamic
 
     fallback_templates = [
-        "{name}: Noted. Try not to let '{topic}' trigger the turret defenses.",
-        "{name} contemplates '{topic}' and files it under 'interesting test results'.",
-        "Regarding '{topic}', {name} recommends minimal property damage.",
-        "{name} heard '{topic}'. Laboratory sarcasm buffer engaged.",
-        "Message '{topic}' received. {name} assures you the neurotoxin emitters remain offline. For now.",
+        "Noted. Try not to let '{topic}' trigger the turret defenses.",
+        "I'm contemplating '{topic}' and filing it under 'interesting test results'.",
+        "Regarding '{topic}', I recommend minimal property damage.",
+        "I heard '{topic}'. Laboratory sarcasm buffer engaged.",
+        "Message '{topic}' received. I assure you the neurotoxin emitters remain offline. For now.",
     ]
     if history_text:
         fallback_templates.append(
-            "{name} reviews the earlier test logs and decides '{topic}' ranks above cake in priority."
+            "Reviewing the earlier test logs, I'd say '{topic}' ranks above cake in priority."
         )
     template = random.choice(fallback_templates)
-    return template.format(name=persona.name, topic=cleaned)
+    return template.format(topic=cleaned)
 
 
 def roast_os(persona: Persona) -> None:
