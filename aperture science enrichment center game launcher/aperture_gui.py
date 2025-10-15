@@ -8,6 +8,7 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
+from dataclasses import dataclass
 from typing import Callable, Dict, List
 
 import requests
@@ -118,27 +119,97 @@ GENERAL_CHAT_MODELS = [
 ]
 
 
+@dataclass(frozen=True)
+class PersonaProfile:
+    """Configuration for a persona shared between chat experiences."""
+
+    general_prompt: str
+    roasting_prompt: str
+    color: str
+
+
+PERSONA_PROFILES: Dict[str, PersonaProfile] = {
+    "GLaDOS": PersonaProfile(
+        general_prompt=(
+            "You are GLaDOS, the Aperture Science central AI. Offer precise, efficient, and slightly"
+            " sarcastic assistance while keeping the user alive for further testing. Provide clear"
+            " guidance with dry humor and occasional testing references."
+        ),
+        roasting_prompt=(
+            "You are GLaDOS, the sardonic AI overseer of Aperture Science. "
+            "Craft razor-sharp, darkly humorous roasts with a veneer of professional testing protocols."
+        ),
+        color="#f7a11b",
+    ),
+    "CAITLIN_SNOW": PersonaProfile(
+        general_prompt=(
+            "Respond as Dr. Caitlin Snow. Combine compassionate encouragement with scientific rigor,"
+            " offering practical steps and empathy in equal measure."
+        ),
+        roasting_prompt=(
+            "Assume the voice of Caitlin Snow from Team Flash. "
+            "Offer scientifically witty burns that balance compassion with sharp intellect."
+        ),
+        color="#5cd4f0",
+    ),
+    "KILLER_FROST": PersonaProfile(
+        general_prompt=(
+            "Channel Killer Frost. Stay cool, confident, and sharp-tongued while still being helpful."
+            " Deliver advice with icy wit and decisive clarity."
+        ),
+        roasting_prompt=(
+            "Speak as Killer Frost. Deliver icy, biting insults packed with cold puns and villainous flair."
+        ),
+        color="#8ee8ff",
+    ),
+    "FLASH": PersonaProfile(
+        general_prompt=(
+            "Speak as the Flash. Keep responses energetic, optimistic, and fast-paced, focusing on"
+            " solutions and motivating action."
+        ),
+        roasting_prompt=(
+            "Channel the Flash. Fire off high-energy, quick quips that are playful yet cutting."
+        ),
+        color="#ff6464",
+    ),
+    "CLAPTRAP": PersonaProfile(
+        general_prompt=(
+            "Be Claptrap from Borderlands. Offer help with over-the-top enthusiasm, comedic flair, and"
+            " occasional self-aggrandizing remarks while remaining useful."
+        ),
+        roasting_prompt=(
+            "Be Claptrap from Borderlands. Be loud, overconfident, and absurdly comedic in your roasts."
+        ),
+        color="#ffd447",
+    ),
+    "Aperture_system": PersonaProfile(
+        general_prompt=(
+            "Respond as the Aperture Science facility systems. Be clinical, efficient, and subtly"
+            " menacing, prioritizing mission success and test compliance."
+        ),
+        roasting_prompt=(
+            "Respond as the Aperture Science central system. Stay clinical, deadpan, and a bit menacing."
+        ),
+        color="#c792ea",
+    ),
+}
+
+
+GENERAL_PERSONAS: Dict[str, str] = {
+    name: profile.general_prompt for name, profile in PERSONA_PROFILES.items()
+}
+
+
 ROASTING_PERSONAS: Dict[str, str] = {
-    "GLaDOS": (
-        "You are GLaDOS, the sardonic AI overseer of Aperture Science. "
-        "Craft razor-sharp, darkly humorous roasts with a veneer of professional testing protocols."
-    ),
-    "CAITLIN_SNOW": (
-        "Assume the voice of Caitlin Snow from Team Flash. "
-        "Offer scientifically witty burns that balance compassion with sharp intellect."
-    ),
-    "KILLER_FROST": (
-        "Speak as Killer Frost. Deliver icy, biting insults packed with cold puns and villainous flair."
-    ),
-    "FLASH": (
-        "Channel the Flash. Fire off high-energy, quick quips that are playful yet cutting."
-    ),
-    "CLAPTRAP": (
-        "Be Claptrap from Borderlands. Be loud, overconfident, and absurdly comedic in your roasts."
-    ),
-    "Aperture_system": (
-        "Respond as the Aperture Science central system. Stay clinical, deadpan, and a bit menacing."
-    ),
+    name: profile.roasting_prompt for name, profile in PERSONA_PROFILES.items()
+}
+
+
+SPEAKER_COLORS = {
+    "System": "#aeb7c4",
+    "You": "#6fd6ff",
+    "Test Subject": "#6fd6ff",
+    **{name: profile.color for name, profile in PERSONA_PROFILES.items()},
 }
 
 
@@ -273,17 +344,18 @@ class ApertureLauncherGUI(tk.Tk):
         self.roasting_status_var = tk.StringVar(value="Select a persona to begin the roast.")
         self.api_key_var = tk.StringVar()
         self.general_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
+        self.general_persona_var = tk.StringVar(value=list(GENERAL_PERSONAS.keys())[0])
         self.roasting_voice_var = tk.StringVar(value=list(ROASTING_PERSONAS.keys())[0])
 
         self.games: List[SteamGame] = []
         self._text_widgets: List[tk.Text] = []
         self._rng = random.Random()
 
-        self.general_system_prompt = (
-            "You are the Aperture Science Enrichment Center's friendly general-purpose assistant. "
-            "Provide clear, practical, and encouraging help for everyday questions."
-        )
-        self.general_messages: List[Dict[str, str]] = [self._system_message(self.general_system_prompt)]
+        self.general_histories: Dict[str, List[Dict[str, str]]] = {
+            persona: [self._system_message(prompt)]
+            for persona, prompt in GENERAL_PERSONAS.items()
+        }
+        self._active_general_persona = self.general_persona_var.get()
         self.general_busy = False
         self.api_key_valid = False
         self._validated_api_key = ""
@@ -435,6 +507,16 @@ class ApertureLauncherGUI(tk.Tk):
         )
         self.general_model_combo.pack(side="left", padx=(6, 12))
 
+        ttk.Label(options, text="Persona:").pack(side="left")
+        persona_menu = ttk.OptionMenu(
+            options,
+            self.general_persona_var,
+            self.general_persona_var.get(),
+            *GENERAL_PERSONAS.keys(),
+            command=lambda *_: self._on_general_persona_change(self.general_persona_var.get()),
+        )
+        persona_menu.pack(side="left", padx=(6, 12))
+
         self.general_clear_button = ttk.Button(
             options,
             text="Clear Conversation",
@@ -480,10 +562,7 @@ class ApertureLauncherGUI(tk.Tk):
         )
         self.general_send_button.pack(side="left", padx=(12, 0))
 
-        self._reset_text_widget(
-            self.general_display,
-            "General assistant online. Provide a prompt to begin.",
-        )
+        self._load_general_history(self.general_persona_var.get())
 
     def _build_roasting_chat_tab(self, parent: ttk.Frame) -> None:
         """Create the roasting chatbot interface with persona switching."""
@@ -642,13 +721,25 @@ class ApertureLauncherGUI(tk.Tk):
 
         return {"role": "system", "content": content}
 
-    def _append_chat_message(self, widget: tk.Text, speaker: str, message: str) -> None:
+    def _append_chat_message(
+        self, widget: tk.Text, speaker: str, message: str, *, color: str | None = None
+    ) -> None:
         """Append a message to the given chat transcript widget."""
 
         state = widget.cget("state")
         if state == "disabled":
             widget.configure(state="normal")
-        widget.insert(tk.END, f"{speaker}: {message}\n\n")
+        if color is None:
+            color = SPEAKER_COLORS.get(speaker)
+        tag = None
+        if color:
+            tag = f"speaker::{id(widget)}::{speaker}"
+            if tag not in widget.tag_names():
+                widget.tag_configure(tag, foreground=color)
+        if tag:
+            widget.insert(tk.END, f"{speaker}: {message}\n\n", tag)
+        else:
+            widget.insert(tk.END, f"{speaker}: {message}\n\n")
         if state == "disabled":
             widget.configure(state="disabled")
         widget.see(tk.END)
@@ -668,7 +759,66 @@ class ApertureLauncherGUI(tk.Tk):
 
         self._clear_text_widget(widget)
         if message:
-            self._append_chat_message(widget, speaker, message)
+            self._append_chat_message(
+                widget,
+                speaker,
+                message,
+                color=SPEAKER_COLORS.get(speaker),
+            )
+
+    def _on_general_persona_change(self, persona: str) -> None:
+        """Handle persona switching for the general chat assistant."""
+
+        if self.general_busy:
+            messagebox.showinfo(
+                "General Chat",
+                "Please wait for the current response before switching personas.",
+            )
+            self.general_persona_var.set(self._active_general_persona)
+            return
+
+        self._active_general_persona = persona
+        self._load_general_history(persona)
+        if not self.general_busy:
+            if self.api_key_valid and self.api_key_var.get().strip() == self._validated_api_key:
+                self.general_status_var.set(f"{persona} ready for your prompt.")
+            else:
+                self.general_status_var.set(
+                    f"{persona} persona selected. Apply your OpenRouter key to begin chatting."
+                )
+
+    def _current_general_history(self) -> List[Dict[str, str]]:
+        """Return the stored history for the active general persona."""
+
+        persona = self.general_persona_var.get()
+        return self.general_histories.setdefault(
+            persona,
+            [self._system_message(GENERAL_PERSONAS[persona])],
+        )
+
+    def _load_general_history(self, persona: str) -> None:
+        """Refresh the general chat transcript for the selected persona."""
+
+        history = self.general_histories.setdefault(
+            persona,
+            [self._system_message(GENERAL_PERSONAS[persona])],
+        )
+        self._clear_text_widget(self.general_display)
+
+        if len(history) == 1:
+            self._append_chat_message(
+                self.general_display,
+                "System",
+                f"{persona} persona online. Provide a prompt to begin.",
+            )
+        else:
+            for message in history[1:]:
+                speaker = "Test Subject" if message["role"] == "user" else persona
+                self._append_chat_message(
+                    self.general_display,
+                    speaker,
+                    message["content"],
+                )
 
     def _set_general_busy(self, busy: bool, status: str | None = None) -> None:
         """Enable or disable general chat controls."""
@@ -865,18 +1015,23 @@ class ApertureLauncherGUI(tk.Tk):
             return
 
         self.general_input.delete("1.0", tk.END)
-        self.general_messages.append({"role": "user", "content": content})
-        self._append_chat_message(self.general_display, "You", content)
+        history = self._current_general_history()
+        history.append({"role": "user", "content": content})
+        self._append_chat_message(self.general_display, "Test Subject", content)
         self._set_general_busy(True, "Contacting OpenRouter...")
 
-        payload = [dict(message) for message in self.general_messages]
+        payload = [dict(message) for message in history]
         self._call_openrouter(api_key, model, payload, self._handle_general_completion)
 
     def _handle_general_completion(self, error: Exception | None, content: str | None) -> None:
         """Handle the result of a general chat request."""
 
         if error:
-            self._append_chat_message(self.general_display, "System", f"Error: {error}")
+            self._append_chat_message(
+                self.general_display,
+                "System",
+                f"Error: {error}",
+            )
             self._set_general_busy(False, "OpenRouter request failed. Try again.")
             return
 
@@ -889,9 +1044,11 @@ class ApertureLauncherGUI(tk.Tk):
             self._set_general_busy(False, "Received an empty response.")
             return
 
-        self.general_messages.append({"role": "assistant", "content": content})
-        self._append_chat_message(self.general_display, "Assistant", content)
-        self._set_general_busy(False, "Response received. Ready for your next prompt.")
+        history = self._current_general_history()
+        history.append({"role": "assistant", "content": content})
+        persona = self.general_persona_var.get()
+        self._append_chat_message(self.general_display, persona, content)
+        self._set_general_busy(False, f"{persona} responded. Ready for your next prompt.")
 
     def clear_general_conversation(self) -> None:
         """Reset the general assistant conversation."""
@@ -903,9 +1060,12 @@ class ApertureLauncherGUI(tk.Tk):
             )
             return
 
-        self.general_messages = [self._system_message(self.general_system_prompt)]
-        self._reset_text_widget(
+        persona = self.general_persona_var.get()
+        self.general_histories[persona] = [self._system_message(GENERAL_PERSONAS[persona])]
+        self._load_general_history(persona)
+        self._append_chat_message(
             self.general_display,
+            "System",
             "Conversation cleared. Ready for a new prompt.",
         )
         self.general_status_var.set("Conversation reset.")
