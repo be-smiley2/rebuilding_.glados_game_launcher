@@ -905,6 +905,7 @@ class ApertureLauncherGUI(tk.Tk):
         self.model_combo_settings.configure(state=state)
 
         button_state = "normal" if self.ai_responses_enabled else "disabled"
+        self.send_button.configure(state=button_state)
         self.roast_button.configure(state=button_state)
         for button in self.react_buttons:
             button.configure(state=button_state)
@@ -1040,6 +1041,12 @@ class ApertureLauncherGUI(tk.Tk):
         self.append_chat(cleaned, speaker=source, tag=tag, log=True)
 
         if not self.ai_responses_enabled:
+            self.append_chat(
+                "AI replies are disabled while No AI mode is active.",
+                speaker="System",
+                tag="system",
+                log=True,
+            )
             return
 
         reply = compose_chat_reply(
