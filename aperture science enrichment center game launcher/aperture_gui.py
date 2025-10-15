@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 import subprocess
 import sys
 import threading
@@ -141,6 +142,112 @@ ROASTING_PERSONAS: Dict[str, str] = {
 }
 
 
+ROASTING_SCRIPTS = {
+    "GLaDOS": {
+        "intro": [
+            "Attention, test subject.",
+            "Commencing unnecessary evaluation.",
+            "Another data point has volunteered for humiliation.",
+        ],
+        "templates": [
+            "I ran seventeen simulations on {target}. In every single one, even the companion cube requested a transfer.",
+            "{target} is so catastrophically average that the neurotoxin emitters fell asleep halfway through the briefing.",
+            "If mediocrity were a test chamber, {target} would be the control group, the failure state, and the emergency evacuation plan all at once.",
+        ],
+        "outro": [
+            "Please return to your cell while I file this under \"hazardous waste\".",
+            "Recommendation: immediate incineration for quality control.",
+            "This concludes your performance review. Spoiler: you failed.",
+        ],
+    },
+    "CAITLIN_SNOW": {
+        "intro": [
+            "Okay, science hat on.",
+            "Let's analyze this clinically.",
+            "Running diagnostics, because wow.",
+        ],
+        "templates": [
+            "After a complete biochemical sweep, I can confirm {target} has the energy of a half-charged particle accelerator and the output of a broken Bunsen burner.",
+            "{target} is basically a lab sample labeled \"inconclusive\" with a sticky note that says \"do not waste time retesting\".",
+            "Even the thermodynamic equations roll their eyes at how little heat {target} brings to any reaction.",
+        ],
+        "outro": [
+            "Try not to contaminate the timeline while you're at it.",
+            "That's the friendliest reading you're getting today.",
+            "I'd prescribe confidence, but it's clearly out of stock.",
+        ],
+    },
+    "KILLER_FROST": {
+        "intro": [
+            "Ice to roast you.",
+            "Let's chill and spill.",
+            "Cold front incoming.",
+        ],
+        "templates": [
+            "{target} is colder than my cryo-chamber and twice as lifeless.",
+            "The only thing frostier than my touch is the reception {target} gets in any room.",
+            "{target} is proof that absolute zero can actually be achieved in personality form.",
+        ],
+        "outro": [
+            "Bundle up; that burn's going to sting.",
+            "Stay frosty—mainly because that's all you're good at.",
+            "Now melt away before I get bored.",
+        ],
+    },
+    "FLASH": {
+        "intro": [
+            "Alright, lightning round!",
+            "Try to keep up, slowpoke.",
+            "Blink and you'll miss this roast—though missing it might be a blessing for you.",
+        ],
+        "templates": [
+            "{target} moves through life like a speedster stuck in molasses wearing lead boots.",
+            "I ran around the world three times, solved five crises, and {target} still couldn't finish a coherent thought.",
+            "{target} has less momentum than my breakfast burrito, and trust me, that thing drags.",
+        ],
+        "outro": [
+            "Gotta dash before boredom catches up.",
+            "Call me when you finally reach the starting line.",
+            "Try pacing yourself—on second thought, just try pacing.",
+        ],
+    },
+    "CLAPTRAP": {
+        "intro": [
+            "OHHH LOOK AT ME!",
+            "Hey everybody, it's disappointment o'clock!",
+            "Incoming broadcast from your favorite hyperactive robot!",
+        ],
+        "templates": [
+            "I scanned {target} for charisma and the only result was \"404: personality not found\".",
+            "{target} is the DLC nobody asked for—buggy, boring, and immediately uninstalled.",
+            "If awkward had a mascot, {target} would be the cardboard cutout that even I wouldn't high-five.",
+        ],
+        "outro": [
+            "Please insert better dialogue to continue!",
+            "And now I'm moonwalking away from this train wreck!",
+            "Catch you later, unless you're still buffering!",
+        ],
+    },
+    "Aperture_system": {
+        "intro": [
+            "ALERT: new data packet received.",
+            "System log update initiated.",
+            "Automated observation commencing.",
+        ],
+        "templates": [
+            "Subject {target} registers below acceptable parameters in competence, charisma, and basic firmware stability.",
+            "Quality assurance report: {target} flagged as non-essential decor with negative entertainment value.",
+            "Audit complete. {target} classified as an ongoing containment breach of professionalism.",
+        ],
+        "outro": [
+            "Scheduling disposal via incinerator chute 3.",
+            "Please stand by for compulsory retraining.",
+            "Recommendation forwarded to GLaDOS: immediate sarcasm bombardment.",
+        ],
+    },
+}
+
+
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 
@@ -165,11 +272,11 @@ class ApertureLauncherGUI(tk.Tk):
         self.roasting_status_var = tk.StringVar(value="Select a persona to begin the roast.")
         self.api_key_var = tk.StringVar()
         self.general_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
-        self.roasting_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
         self.roasting_voice_var = tk.StringVar(value=list(ROASTING_PERSONAS.keys())[0])
 
         self.games: List[SteamGame] = []
         self._text_widgets: List[tk.Text] = []
+        self._rng = random.Random()
 
         self.general_system_prompt = (
             "You are the Aperture Science Enrichment Center's friendly general-purpose assistant. "
@@ -382,16 +489,6 @@ class ApertureLauncherGUI(tk.Tk):
         )
         persona_menu.pack(side="left", padx=(6, 12))
 
-        ttk.Label(settings, text="Model:").pack(side="left")
-        self.roasting_model_combo = ttk.Combobox(
-            settings,
-            textvariable=self.roasting_model_var,
-            values=GENERAL_CHAT_MODELS,
-            state="readonly",
-            width=40,
-        )
-        self.roasting_model_combo.pack(side="left", padx=(6, 12))
-
         self.roasting_clear_button = ttk.Button(
             settings,
             text="Clear Persona History",
@@ -583,8 +680,26 @@ class ApertureLauncherGUI(tk.Tk):
 
         if status is None:
             persona = self.roasting_voice_var.get()
-            status = "Contacting OpenRouter..." if busy else f"{persona} ready to roast."
+            status = "Synthesizing a roast..." if busy else f"{persona} ready to roast."
         self.roasting_status_var.set(status)
+
+    def _generate_roast(self, persona: str, prompt: str) -> str:
+        """Create a persona-themed roast without contacting external services."""
+
+        script = ROASTING_SCRIPTS.get(persona) or ROASTING_SCRIPTS["GLaDOS"]
+        target = " ".join(prompt.split())
+        target = target.strip(" .,!?:;\"'")
+        if not target:
+            target = "this test subject"
+        elif len(target) > 120:
+            target = target[:117].rstrip() + "..."
+
+        intro = self._rng.choice(script["intro"])
+        template = self._rng.choice(script["templates"])
+        outro = self._rng.choice(script["outro"])
+
+        segments = [intro.strip(), template.format(target=target).strip(), outro.strip()]
+        return " ".join(segment for segment in segments if segment)
 
     def _call_openrouter(
         self,
@@ -729,70 +844,44 @@ class ApertureLauncherGUI(tk.Tk):
             )
             return
 
-        api_key = self.api_key_var.get().strip()
-        if not api_key:
-            messagebox.showerror("Roasting Chamber", "An OpenRouter API key is required.")
-            return
-
-        model = self.roasting_model_var.get().strip()
-        if not model:
-            messagebox.showerror("Roasting Chamber", "Select a model before sending.")
-            return
-
         persona = self.roasting_voice_var.get()
         history = self._current_roasting_history()
         history.append({"role": "user", "content": content})
         self._append_chat_message(self.roasting_display, "You", content)
         self.roasting_input.delete("1.0", tk.END)
-        self._set_roasting_busy(True, f"Asking {persona} for a roast...")
+        self._set_roasting_busy(True, f"{persona} is composing a roast...")
 
-        payload = [dict(message) for message in history]
-        self._call_openrouter(
-            api_key,
-            model,
-            payload,
-            lambda error, reply, persona=persona: self._handle_roasting_completion(
-                persona, error, reply
-            ),
-        )
+        user_prompt = content
 
-    def _handle_roasting_completion(
-        self, persona: str, error: Exception | None, content: str | None
-    ) -> None:
-        """Handle the result of a roasting chat request."""
-
-        history = self.roasting_histories.setdefault(
-            persona, [self._system_message(ROASTING_PERSONAS[persona])]
-        )
-        is_active = persona == self.roasting_voice_var.get()
-
-        if error:
-            if is_active:
-                self._append_chat_message(
-                    self.roasting_display,
-                    "System",
-                    f"Error: {error}",
+        def finalize_roast() -> None:
+            try:
+                roast = self._generate_roast(persona, user_prompt)
+            except Exception as exc:  # pragma: no cover - defensive
+                history.append(
+                    {
+                        "role": "assistant",
+                        "content": f"System error generating roast: {exc}",
+                    }
                 )
-            self._set_roasting_busy(False, "OpenRouter request failed. Try again." if is_active else None)
-            return
+                if persona == self.roasting_voice_var.get():
+                    self._append_chat_message(
+                        self.roasting_display,
+                        "System",
+                        "Roast generator malfunctioned. Please try again.",
+                    )
+                    self._set_roasting_busy(False, "Roast generator unavailable.")
+                else:
+                    self._set_roasting_busy(False)
+                return
 
-        if content is None:
-            if is_active:
-                self._append_chat_message(
-                    self.roasting_display,
-                    "System",
-                    "No response received from OpenRouter.",
-                )
-            self._set_roasting_busy(False, "Received an empty response." if is_active else None)
-            return
+            history.append({"role": "assistant", "content": roast})
+            if persona == self.roasting_voice_var.get():
+                self._append_chat_message(self.roasting_display, persona, roast)
+                self._set_roasting_busy(False, f"{persona} delivered a roast. Ready for more.")
+            else:
+                self._set_roasting_busy(False)
 
-        history.append({"role": "assistant", "content": content})
-        if is_active:
-            self._append_chat_message(self.roasting_display, persona, content)
-        self._set_roasting_busy(
-            False,
-            f"{persona} delivered a roast. Ready for more." if is_active else None,
-        )
+        self.after(120, finalize_roast)
 
     def clear_roasting_conversation(self) -> None:
         """Reset the active roasting persona's conversation."""
