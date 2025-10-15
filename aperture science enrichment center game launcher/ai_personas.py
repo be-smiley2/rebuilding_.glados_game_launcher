@@ -9,7 +9,7 @@ import socket
 import sys
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Any, Dict, Sequence
+from typing import Any, Dict, Sequence, Tuple
 from urllib import error, request
 
 from ansi_colors import (
@@ -45,6 +45,8 @@ class Persona:
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_USAGE_URL = "https://openrouter.ai/api/v1/usage"
+OPENROUTER_USER_URL = "https://openrouter.ai/api/v1/user"
 FREE_MODELS_FILE = Path(__file__).with_name("openrouter ai models.py")
 _FREE_MODEL_CACHE: list[str] | None = None
 _HAS_WARNED_MISSING_KEY = False
@@ -114,6 +116,135 @@ def _read_key_from_keyring() -> str | None:
     return secret.strip() if secret else None
 
 
+def keyring_available() -> bool:
+    """Return True when the optional keyring backend is usable."""
+
+    return keyring is not None
+
+
+def keyring_has_openrouter_secret() -> bool:
+    """Return True when the keyring already stores an OpenRouter API key."""
+
+    return _read_key_from_keyring() is not None
+
+
+def store_openrouter_api_key(secret: str) -> bool:
+    """Persist the OpenRouter API key to the system keyring when supported."""
+
+    if keyring is None:
+        return False
+
+    secret = secret.strip()
+    if not secret:
+        return False
+
+    service = os.getenv("OPENROUTER_KEYRING_SERVICE", "openrouter")
+    username = os.getenv("OPENROUTER_KEYRING_USERNAME", "aperture_launcher")
+    if not service or not username:
+        return False
+
+    try:
+        keyring.set_password(service, username, secret)
+    except Exception:
+        return False
+    return True
+
+
+def delete_openrouter_api_key() -> bool:
+    """Remove the OpenRouter API key from the system keyring when supported."""
+
+    if keyring is None:
+        return False
+
+    service = os.getenv("OPENROUTER_KEYRING_SERVICE", "openrouter")
+    username = os.getenv("OPENROUTER_KEYRING_USERNAME", "aperture_launcher")
+    if not service or not username:
+        return False
+
+    try:
+        keyring.delete_password(service, username)
+    except Exception:
+        return False
+    return True
+
+
+def _stringify_usage_value(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return f"{value}"
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        items = [
+            f"{key}={val}"
+            for key, val in value.items()
+            if isinstance(val, (int, float, str))
+        ]
+        if items:
+            return ", ".join(items)
+    return None
+
+
+def _summarize_usage_payload(payload: Any) -> str | None:
+    if isinstance(payload, dict):
+        candidates = []
+        for key in ("remaining", "balance", "credits", "total", "spent", "limit"):
+            if key not in payload:
+                continue
+            text = _stringify_usage_value(payload[key])
+            if text:
+                candidates.append(f"{key}: {text}")
+        if candidates:
+            return "; ".join(candidates)
+        for key in ("data", "usage", "totals"):
+            if key in payload:
+                summary = _summarize_usage_payload(payload[key])
+                if summary:
+                    return summary
+    if isinstance(payload, list):
+        for item in payload:
+            summary = _summarize_usage_payload(item)
+            if summary:
+                return summary
+    return None
+
+
+def fetch_openrouter_usage_summary(api_key: str) -> str | None:
+    """Return a human readable usage summary for the supplied API key."""
+
+    if not api_key:
+        return None
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    for url in (OPENROUTER_USAGE_URL, OPENROUTER_USER_URL):
+        http_request = request.Request(url, headers=headers)
+        try:
+            with request.urlopen(http_request, timeout=10) as response:
+                raw = response.read().decode("utf-8")
+        except error.HTTPError as exc:
+            if exc.code == 404:
+                continue
+            return None
+        except (error.URLError, TimeoutError, socket.timeout):
+            return None
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+
+        summary = _summarize_usage_payload(payload)
+        if summary:
+            return summary
+
+    return None
+
+
 def _load_local_free_models() -> list[str]:
     """Return model slugs stored in the repository list when available."""
 
@@ -176,7 +307,11 @@ def persona_say(persona: Persona, message: str) -> None:
     print(f"{persona.color}{message}")
 
 
-def compose_os_roast(persona: Persona, allow_dynamic: bool = True) -> str:
+def compose_os_roast(
+    persona: Persona,
+    allow_dynamic: bool = True,
+    model: str | None = None,
+) -> str:
     """Return the roast a persona would deliver for the current operating system."""
 
     os_name = detect_os_name()
@@ -188,6 +323,7 @@ def compose_os_roast(persona: Persona, allow_dynamic: bool = True) -> str:
                 "The user is running {os} as their operating system."
                 " Deliver a concise roast in your trademark voice."
             ).format(os=os_name),
+            model=model,
         )
     if dynamic:
         return dynamic
@@ -199,7 +335,10 @@ def compose_os_roast(persona: Persona, allow_dynamic: bool = True) -> str:
 
 
 def compose_game_roasts(
-    persona: Persona, games: Sequence[Any], allow_dynamic: bool = True
+    persona: Persona,
+    games: Sequence[Any],
+    allow_dynamic: bool = True,
+    model: str | None = None,
 ) -> list[str]:
     """Return the roast lines a persona would deliver for the supplied games."""
 
@@ -209,6 +348,7 @@ def compose_game_roasts(
             dynamic = generate_openrouter_roast(
                 persona,
                 "Roast the user for having no games installed in their Steam library.",
+                model=model,
             )
         if dynamic:
             return [dynamic]
@@ -225,6 +365,7 @@ def compose_game_roasts(
                     "Roast the user for preparing to launch the game {game}."
                     " Keep it playful, a single sentence, and unmistakably in your voice."
                 ).format(game=name),
+                model=model,
             )
         if dynamic:
             lines.append(dynamic)
@@ -236,19 +377,37 @@ def compose_game_roasts(
 
 
 def compose_chat_reply(
-    persona: Persona, user_message: str, allow_dynamic: bool = True
+    persona: Persona,
+    user_message: str,
+    allow_dynamic: bool = True,
+    model: str | None = None,
+    history: Sequence[Tuple[str, str]] | None = None,
 ) -> str:
     """Return a short persona-flavoured reply for the given chat message."""
 
     cleaned = user_message.strip() or "..."
+    history_text = ""
+    if history:
+        recent = history[-6:]
+        formatted = [
+            f"{speaker}: {text}" for speaker, text in recent if speaker and text
+        ]
+        if formatted:
+            history_text = "\n".join(formatted)
+
     if allow_dynamic:
-        dynamic = generate_openrouter_roast(
-            persona,
-            (
+        if history_text:
+            prompt = (
+                "Maintain this chat as {name}. Previous dialogue:\n{history}\n"
+                "User: \"{message}\".\nReply in one or two sentences in character,"
+                " keeping the conversation coherent."
+            ).format(history=history_text, message=cleaned, name=persona.name)
+        else:
+            prompt = (
                 "The user says: \"{message}\"."
                 " Reply as {name} in one or two sentences, keeping your signature tone."
-            ).format(message=cleaned, name=persona.name),
-        )
+            ).format(message=cleaned, name=persona.name)
+        dynamic = generate_openrouter_roast(persona, prompt, model=model)
         if dynamic:
             return dynamic
 
@@ -259,6 +418,10 @@ def compose_chat_reply(
         "{name} heard '{topic}'. Laboratory sarcasm buffer engaged.",
         "Message '{topic}' received. {name} assures you the neurotoxin emitters remain offline. For now.",
     ]
+    if history_text:
+        fallback_templates.append(
+            "{name} reviews the earlier test logs and decides '{topic}' ranks above cake in priority."
+        )
     template = random.choice(fallback_templates)
     return template.format(name=persona.name, topic=cleaned)
 
