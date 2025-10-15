@@ -91,6 +91,7 @@ class ApertureLauncherGUI(tk.Tk):
 
         self.jellyfin_busy = False
         self.media_action_buttons: List[ttk.Button] = []
+        self.scanning_games = False
 
         self._build_ui()
         self._apply_theme()
@@ -1034,20 +1035,65 @@ class ApertureLauncherGUI(tk.Tk):
     def scan_for_games(self) -> None:
         """Discover Steam games and populate the tree view."""
 
-        self._set_status("Scanning Steam libraries...")
-        self.update_idletasks()
+        if self.scanning_games:
+            messagebox.showinfo(
+                "Steam Library",
+                "A scan is already in progress. Please wait for it to finish.",
+            )
+            return
 
-        libraries = discover_steam_libraries()
-        games = find_installed_games(libraries)
-        self.games = games
+        self.scanning_games = True
+        self._set_status("Scanning Steam libraries...")
+        if hasattr(self, "scan_button"):
+            self.scan_button.configure(state="disabled")
+        if hasattr(self, "launch_button"):
+            self.launch_button.configure(state="disabled")
+
+        threading.Thread(target=self._perform_game_scan, daemon=True).start()
+
+    def _perform_game_scan(self) -> None:
+        """Run the Steam scan work off the Tkinter thread."""
+
+        try:
+            libraries = discover_steam_libraries()
+            games = find_installed_games(libraries)
+        except Exception as exc:  # pragma: no cover - defensive guard for runtime issues
+            self.after(0, lambda: self._handle_game_scan_result(exc, []))
+            return
+
+        self.after(0, lambda: self._handle_game_scan_result(None, games))
+
+    def _handle_game_scan_result(self, error: Exception | None, games: Sequence[SteamGame]) -> None:
+        """Update the UI after a background Steam scan completes."""
+
+        self.scanning_games = False
+
+        if hasattr(self, "scan_button"):
+            self.scan_button.configure(state="normal")
+
+        if error is not None:
+            self._set_status("Steam scan failed. See details and try again.")
+            if hasattr(self, "launch_button"):
+                self.launch_button.configure(state="disabled")
+            messagebox.showerror(
+                "Steam Library",
+                f"Scanning Steam libraries failed:\n{error}",
+            )
+            return
+
+        self.games = list(games)
         self._refresh_roasting_games()
+
+        if not hasattr(self, "tree"):
+            return
 
         for item in self.tree.get_children():
             self.tree.delete(item)
 
         if not games:
             self._set_status("No Steam games detected. Ensure Steam libraries are accessible.")
-            self.launch_button.configure(state="disabled")
+            if hasattr(self, "launch_button"):
+                self.launch_button.configure(state="disabled")
             return
 
         for game in games:
@@ -1058,8 +1104,12 @@ class ApertureLauncherGUI(tk.Tk):
                 values=(game.name, game.app_id, str(game.install_dir)),
             )
 
-        self.tree.selection_set(self.tree.get_children()[0])
-        self.tree.focus(self.tree.get_children()[0])
+        children = self.tree.get_children()
+        if children:
+            first = children[0]
+            self.tree.selection_set(first)
+            self.tree.focus(first)
+
         self._update_launch_button_state()
         self._set_status(f"Found {len(games)} game(s). Select one to launch.")
 
