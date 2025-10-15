@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import platform
 import random
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
-from typing import Dict, List
+from typing import Callable, Dict, List, Sequence
 
 from steam_scanner import (
     SteamGame,
@@ -19,7 +22,12 @@ from .constants import (
     GENERAL_CHAT_PERSONAS,
     ROASTING_PERSONAS,
     THEME_PALETTES,
+    JELLYFIN_API_KEY_ENV,
+    JELLYFIN_SERVER_URL_ENV,
+    JELLYFIN_USER_ID_ENV,
+    OPENROUTER_API_KEY_ENV,
 )
+from .jellyfin import fetch_recent_media, fetch_system_info, fetch_user_views
 from .openrouter import request_chat_completion, verify_api_key
 from .roasting import generate_roast
 from .steam_launcher import launch_game
@@ -43,15 +51,24 @@ class ApertureLauncherGUI(tk.Tk):
         self.theme_var = tk.StringVar(value="dark")
         self.status_var = tk.StringVar(value="Awaiting scan.")
         self.general_status_var = tk.StringVar(value="Apply your OpenRouter key to begin chatting.")
-        self.roasting_status_var = tk.StringVar(value="Select a persona to begin the roast.")
-        self.api_key_var = tk.StringVar()
+        self.roasting_status_var = tk.StringVar(
+            value="Select a persona and optionally choose a game to roast."
+        )
+        self.media_status_var = tk.StringVar(value="Provide Jellyfin details to connect.")
+        self.api_key_var = tk.StringVar(value=os.environ.get(OPENROUTER_API_KEY_ENV, ""))
         self.general_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
         self.general_persona_var = tk.StringVar(value=list(GENERAL_CHAT_PERSONAS.keys())[0])
         self.roasting_voice_var = tk.StringVar(value=list(ROASTING_PERSONAS.keys())[0])
+        self.roasting_game_var = tk.StringVar(value="")
+        self.include_os_var = tk.BooleanVar(value=True)
+        self.jellyfin_server_var = tk.StringVar(value=os.environ.get(JELLYFIN_SERVER_URL_ENV, ""))
+        self.jellyfin_api_key_var = tk.StringVar(value=os.environ.get(JELLYFIN_API_KEY_ENV, ""))
+        self.jellyfin_user_id_var = tk.StringVar(value=os.environ.get(JELLYFIN_USER_ID_ENV, ""))
 
         self.games: List[SteamGame] = []
         self._text_widgets: List[tk.Text] = []
         self._rng = random.Random()
+        self._os_summary = platform.platform() or platform.system() or "Unknown OS"
 
         self.general_histories: Dict[str, List[Dict[str, str]]] = {
             persona: [self._system_message(prompt)]
@@ -61,16 +78,25 @@ class ApertureLauncherGUI(tk.Tk):
         self.general_busy = False
         self.api_key_valid = False
         self._validated_api_key = ""
+        self._auto_apply_api_key = bool(self.api_key_var.get())
 
         self.roasting_histories: Dict[str, List[Dict[str, str]]] = {
             persona: [self._system_message(prompt)] for persona, prompt in ROASTING_PERSONAS.items()
         }
         self.roasting_busy = False
+        self._pending_roasting_persona: str | None = None
+        self._last_roasting_prompt = ""
+
+        self.jellyfin_busy = False
+        self.media_action_buttons: List[ttk.Button] = []
 
         self._build_ui()
         self._apply_theme()
 
         self.api_key_var.trace_add("write", self._invalidate_api_key)
+        if self._auto_apply_api_key:
+            self.general_status_var.set("Validating API key from environment...")
+            self.after(200, self.apply_api_key)
 
     def _build_ui(self) -> None:
         """Create and layout the interface widgets."""
@@ -105,14 +131,17 @@ class ApertureLauncherGUI(tk.Tk):
 
         self.launcher_tab = ttk.Frame(self.notebook)
         self.general_chat_tab = ttk.Frame(self.notebook)
+        self.media_server_tab = ttk.Frame(self.notebook)
         self.roasting_chat_tab = ttk.Frame(self.notebook)
 
         self.notebook.add(self.launcher_tab, text="Launcher")
         self.notebook.add(self.general_chat_tab, text="General Chat")
+        self.notebook.add(self.media_server_tab, text="Media Server")
         self.notebook.add(self.roasting_chat_tab, text="Roasting Chamber")
 
         self._build_launcher_tab(self.launcher_tab)
         self._build_general_chat_tab(self.general_chat_tab)
+        self._build_media_tab(self.media_server_tab)
         self._build_roasting_chat_tab(self.roasting_chat_tab)
 
     def _build_launcher_tab(self, parent: ttk.Frame) -> None:
@@ -266,6 +295,101 @@ class ApertureLauncherGUI(tk.Tk):
 
         self._load_general_history(self.general_persona_var.get())
 
+    def _build_media_tab(self, parent: ttk.Frame) -> None:
+        """Construct the Jellyfin media server interface."""
+
+        config = ttk.LabelFrame(parent, text="Jellyfin Connection")
+        config.pack(fill="x", padx=24, pady=(24, 12))
+        config.columnconfigure(1, weight=1)
+
+        ttk.Label(config, text="Server URL:").grid(row=0, column=0, sticky="w")
+        self.jellyfin_server_entry = ttk.Entry(
+            config,
+            textvariable=self.jellyfin_server_var,
+            width=52,
+        )
+        self.jellyfin_server_entry.grid(row=0, column=1, sticky="ew")
+
+        ttk.Label(config, text="API Key:").grid(row=1, column=0, sticky="w", pady=(6, 0))
+        self.jellyfin_api_key_entry = ttk.Entry(
+            config,
+            textvariable=self.jellyfin_api_key_var,
+            show="*",
+            width=52,
+        )
+        self.jellyfin_api_key_entry.grid(row=1, column=1, sticky="ew", pady=(6, 0))
+
+        ttk.Label(config, text="User ID:").grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.jellyfin_user_id_entry = ttk.Entry(
+            config,
+            textvariable=self.jellyfin_user_id_var,
+            width=52,
+        )
+        self.jellyfin_user_id_entry.grid(row=2, column=1, sticky="ew", pady=(6, 0))
+
+        ttk.Label(
+            config,
+            text=(
+                "Values can be pre-filled via the environment variables "
+                f"{JELLYFIN_SERVER_URL_ENV}, {JELLYFIN_API_KEY_ENV}, and {JELLYFIN_USER_ID_ENV}."
+            ),
+            wraplength=520,
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+
+        actions = ttk.Frame(parent)
+        actions.pack(fill="x", padx=24)
+
+        self.media_action_buttons: List[ttk.Button] = []
+
+        test_button = ttk.Button(actions, text="Test Connection", command=self.test_jellyfin_connection)
+        test_button.pack(side="left")
+        self.media_action_buttons.append(test_button)
+
+        libraries_button = ttk.Button(
+            actions,
+            text="Fetch Libraries",
+            command=self.fetch_jellyfin_libraries,
+        )
+        libraries_button.pack(side="left", padx=(12, 0))
+        self.media_action_buttons.append(libraries_button)
+
+        recent_button = ttk.Button(
+            actions,
+            text="Recent Media",
+            command=self.fetch_jellyfin_recent_media,
+        )
+        recent_button.pack(side="left", padx=(12, 0))
+        self.media_action_buttons.append(recent_button)
+
+        clear_button = ttk.Button(actions, text="Clear Output", command=self.clear_media_output)
+        clear_button.pack(side="right")
+
+        status_bar = ttk.Frame(parent)
+        status_bar.pack(fill="x", padx=24, pady=(6, 6))
+        self.media_status_label = ttk.Label(status_bar, textvariable=self.media_status_var)
+        self.media_status_label.pack(side="left")
+
+        output_frame = ttk.Frame(parent)
+        output_frame.pack(fill="both", expand=True, padx=24, pady=(6, 24))
+
+        self.media_output = tk.Text(
+            output_frame,
+            wrap="word",
+            state="disabled",
+            height=18,
+            relief="flat",
+            bd=0,
+        )
+        self._text_widgets.append(self.media_output)
+
+        media_scrollbar = ttk.Scrollbar(output_frame, orient="vertical", command=self.media_output.yview)
+        self.media_output.configure(yscrollcommand=media_scrollbar.set)
+
+        self.media_output.pack(side="left", fill="both", expand=True)
+        media_scrollbar.pack(side="right", fill="y")
+
+        self._append_media_output("Awaiting Jellyfin requests.")
+
     def _build_roasting_chat_tab(self, parent: ttk.Frame) -> None:
         """Create the roasting chatbot interface with persona switching."""
 
@@ -281,6 +405,33 @@ class ApertureLauncherGUI(tk.Tk):
             command=lambda *_: self._load_roasting_history(self.roasting_voice_var.get()),
         )
         persona_menu.pack(side="left", padx=(6, 12))
+
+        context = ttk.Frame(parent)
+        context.pack(fill="x", padx=24, pady=(0, 12))
+
+        ttk.Label(context, text="Game:").pack(side="left")
+        self.roasting_game_combo = ttk.Combobox(
+            context,
+            textvariable=self.roasting_game_var,
+            values=[""],
+            width=40,
+            state="readonly",
+        )
+        self.roasting_game_combo.pack(side="left", padx=(6, 12))
+
+        clear_game_button = ttk.Button(
+            context,
+            text="Clear Game",
+            command=lambda: self.roasting_game_var.set(""),
+        )
+        clear_game_button.pack(side="left")
+
+        os_check = ttk.Checkbutton(
+            context,
+            text="Include operating system context",
+            variable=self.include_os_var,
+        )
+        os_check.pack(side="left", padx=(18, 0))
 
         self.roasting_clear_button = ttk.Button(
             settings,
@@ -328,6 +479,7 @@ class ApertureLauncherGUI(tk.Tk):
         self.roasting_send_button.pack(side="left", padx=(12, 0))
 
         self._load_roasting_history(self.roasting_voice_var.get())
+        self._refresh_roasting_games()
 
     def _apply_theme(self) -> None:
         """Update widget colors based on the selected theme."""
@@ -465,6 +617,28 @@ class ApertureLauncherGUI(tk.Tk):
         if message:
             self._append_chat_message(widget, speaker, message)
 
+    def _append_media_output(self, message: str) -> None:
+        """Append a plain text line to the media server output area."""
+
+        if not hasattr(self, "media_output"):
+            return
+
+        widget = self.media_output
+        state = widget.cget("state")
+        if state == "disabled":
+            widget.configure(state="normal")
+        widget.insert(tk.END, f"{message.rstrip()}\n")
+        if state == "disabled":
+            widget.configure(state="disabled")
+        widget.see(tk.END)
+
+    def clear_media_output(self) -> None:
+        """Clear the media server transcript."""
+
+        if hasattr(self, "media_output"):
+            self._clear_text_widget(self.media_output)
+        self._append_media_output("Output cleared.")
+
     def _set_general_busy(self, busy: bool, status: str | None = None) -> None:
         """Enable or disable general chat controls."""
 
@@ -482,6 +656,194 @@ class ApertureLauncherGUI(tk.Tk):
                 else f"{persona} ready for your next prompt."
             )
         self.general_status_var.set(status)
+
+    def _set_jellyfin_busy(self, busy: bool, status: str | None = None) -> None:
+        """Enable or disable Jellyfin controls and update status text."""
+
+        self.jellyfin_busy = busy
+        state = "disabled" if busy else "normal"
+        for button in self.media_action_buttons:
+            button.configure(state=state)
+
+        if status is not None:
+            self.media_status_var.set(status)
+        elif not busy:
+            self.media_status_var.set("Media server idle.")
+
+    def _start_jellyfin_task(
+        self,
+        description: str,
+        worker: Callable[[], tuple[str, Sequence[str]]],
+        *,
+        pre_message: str | None = None,
+        clear_output: bool = False,
+    ) -> None:
+        """Run a Jellyfin request in the background."""
+
+        if self.jellyfin_busy:
+            messagebox.showinfo(
+                "Media Server", "A Jellyfin request is already in progress. Please wait."
+            )
+            return
+
+        if clear_output and hasattr(self, "media_output"):
+            self._clear_text_widget(self.media_output)
+        if pre_message:
+            self._append_media_output(pre_message)
+
+        self._set_jellyfin_busy(True, description)
+
+        def run() -> None:
+            try:
+                status, lines = worker()
+            except Exception as exc:  # pragma: no cover - network dependent
+                self.after(0, lambda exc=exc: self._complete_jellyfin_task(error=exc))
+                return
+            self.after(
+                0,
+                lambda status=status, lines=list(lines): self._complete_jellyfin_task(
+                    status=status, lines=lines
+                ),
+            )
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _complete_jellyfin_task(
+        self,
+        *,
+        status: str | None = None,
+        lines: Sequence[str] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        """Finalize a Jellyfin request on the main thread."""
+
+        if error:
+            self._append_media_output(f"Error: {error}")
+            self._set_jellyfin_busy(False, "Media server request failed.")
+            messagebox.showerror("Media Server", f"Jellyfin request failed:\n\n{error}")
+            return
+
+        if lines:
+            for line in lines:
+                self._append_media_output(line)
+
+        final_status = status or "Media server request complete."
+        self._set_jellyfin_busy(False, final_status)
+
+    def _sanitize_jellyfin_inputs(self) -> tuple[str, str, str]:
+        """Return trimmed Jellyfin credentials."""
+
+        base_url = self.jellyfin_server_var.get().strip()
+        api_key = self.jellyfin_api_key_var.get().strip()
+        user_id = self.jellyfin_user_id_var.get().strip()
+        return base_url, api_key, user_id
+
+    def test_jellyfin_connection(self) -> None:
+        """Validate the Jellyfin server connection."""
+
+        base_url, api_key, _ = self._sanitize_jellyfin_inputs()
+        if not base_url:
+            messagebox.showerror("Media Server", "Enter the Jellyfin server URL before testing.")
+            return
+
+        def worker() -> tuple[str, Sequence[str]]:
+            info = fetch_system_info(base_url, api_key=api_key or None)
+            server_name = info.get("ServerName") or info.get("ProductName") or "Jellyfin"
+            version = info.get("Version") or "Unknown version"
+            os_name = info.get("OperatingSystem") or "Unknown operating system"
+            startup = "Yes" if info.get("StartupWizardCompleted") else "No"
+            lines = [
+                f"Server Name: {server_name}",
+                f"Version: {version}",
+                f"Operating System: {os_name}",
+                f"Server ID: {info.get('Id', 'n/a')}",
+                f"Startup wizard completed: {startup}",
+            ]
+            return (f"Connected to {server_name}.", lines)
+
+        self._start_jellyfin_task(
+            "Testing Jellyfin connection...",
+            worker,
+            pre_message="Testing Jellyfin connection...",
+        )
+
+    def fetch_jellyfin_libraries(self) -> None:
+        """Fetch libraries available to the configured Jellyfin user."""
+
+        base_url, api_key, user_id = self._sanitize_jellyfin_inputs()
+        if not base_url or not api_key or not user_id:
+            messagebox.showerror(
+                "Media Server",
+                "Provide the Jellyfin server URL, API key, and user ID before fetching libraries.",
+            )
+            return
+
+        def worker() -> tuple[str, Sequence[str]]:
+            views = fetch_user_views(base_url, api_key=api_key, user_id=user_id)
+            if not views:
+                return ("No libraries returned.", ["No libraries were found for this user."])
+
+            lines = ["Discovered libraries:"]
+            for view in views:
+                name = view.get("Name") or "Unnamed library"
+                collection = view.get("CollectionType") or view.get("MediaType") or "Unknown type"
+                view_id = view.get("Id", "n/a")
+                lines.append(f"- {name} ({collection}) • Id: {view_id}")
+
+            return (f"Found {len(views)} libraries.", lines)
+
+        self._start_jellyfin_task(
+            "Fetching Jellyfin libraries...",
+            worker,
+            pre_message="Requesting libraries from Jellyfin...",
+            clear_output=True,
+        )
+
+    def fetch_jellyfin_recent_media(self) -> None:
+        """Retrieve recently added media items."""
+
+        base_url, api_key, user_id = self._sanitize_jellyfin_inputs()
+        if not base_url or not api_key or not user_id:
+            messagebox.showerror(
+                "Media Server",
+                "Provide the Jellyfin server URL, API key, and user ID before requesting recent media.",
+            )
+            return
+
+        def worker() -> tuple[str, Sequence[str]]:
+            items = fetch_recent_media(base_url, api_key=api_key, user_id=user_id)
+            if not items:
+                return ("No recent media reported.", ["No recent media items were returned."])
+
+            lines = ["Recently added media:"]
+            for item in items:
+                name = item.get("Name") or "Unnamed item"
+                media_type = item.get("Type") or item.get("MediaType") or "Unknown category"
+                series = item.get("SeriesName")
+                episode = item.get("IndexNumber")
+                season = item.get("ParentIndexNumber")
+                created = item.get("DateCreated")
+                created_display = (
+                    created.replace("T", " ")[:19] if isinstance(created, str) else "Unknown date"
+                )
+
+                detail_parts = [media_type]
+                if series:
+                    detail_parts.append(series)
+                if season is not None and episode is not None:
+                    detail_parts.append(f"S{season}E{episode}")
+
+                detail = " • ".join(str(part) for part in detail_parts if part)
+                lines.append(f"- {name} ({detail}) • Added: {created_display}")
+
+            return (f"Retrieved {len(items)} media items.", lines)
+
+        self._start_jellyfin_task(
+            "Fetching recently added media...",
+            worker,
+            pre_message="Requesting recently added media...",
+            clear_output=True,
+        )
 
     def _invalidate_api_key(self, *_: object) -> None:
         """Mark the cached OpenRouter key as invalid when it changes."""
@@ -553,6 +915,20 @@ class ApertureLauncherGUI(tk.Tk):
 
         self.status_var.set(message)
 
+    def _refresh_roasting_games(self) -> None:
+        """Refresh the roasting game selector with the latest scan results."""
+
+        if not hasattr(self, "roasting_game_combo"):
+            return
+
+        names = sorted({game.name for game in self.games})
+        values = [""] + names
+        self.roasting_game_combo.configure(values=values)
+
+        current = self.roasting_game_var.get()
+        if current and current not in names:
+            self.roasting_game_var.set("")
+
     def scan_for_games(self) -> None:
         """Discover Steam games and populate the tree view."""
 
@@ -562,6 +938,7 @@ class ApertureLauncherGUI(tk.Tk):
         libraries = discover_steam_libraries()
         games = find_installed_games(libraries)
         self.games = games
+        self._refresh_roasting_games()
 
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -756,6 +1133,42 @@ class ApertureLauncherGUI(tk.Tk):
             self.roasting_histories[persona] = [self._system_message(ROASTING_PERSONAS[persona])]
         return self.roasting_histories[persona]
 
+    def _uses_openrouter_for_roasts(self) -> bool:
+        """Return True if OpenRouter should be used for roast generation."""
+
+        return self.api_key_valid and bool(self._validated_api_key)
+
+    def _compose_roast_prompt(self, base_prompt: str) -> str:
+        """Combine user input, selected game, and OS details into a single prompt."""
+
+        lines: List[str] = []
+        game_name = self.roasting_game_var.get().strip()
+        if game_name:
+            lines.append(f"Game: {game_name}")
+        if self.include_os_var.get():
+            lines.append(f"Operating System: {self._os_summary}")
+        trimmed = base_prompt.strip()
+        if trimmed:
+            lines.append(f"Focus: {trimmed}")
+        else:
+            lines.append("Focus: Deliver a general-purpose roast suitable for the test subject.")
+
+        header = (
+            "Roast the subject using the persona's trademark tone. Keep the reply to 3-4 vivid sentences. "
+            "Lean into dark humor where appropriate while staying playful."
+        )
+        context = "\n".join(lines)
+        return f"{header}\n\nContext:\n{context}"
+
+    def _prepare_roasting_payload(self, history: Sequence[Dict[str, str]], prompt: str) -> List[Dict[str, str]]:
+        """Return a copy of the roasting history with the latest message updated for context."""
+
+        payload = [dict(message) for message in history]
+        if payload:
+            payload[-1] = dict(payload[-1])
+            payload[-1]["content"] = prompt
+        return payload
+
     def send_roasting_message(self) -> None:
         """Submit a prompt to the roasting chatbot."""
 
@@ -768,9 +1181,7 @@ class ApertureLauncherGUI(tk.Tk):
 
         content = self.roasting_input.get("1.0", tk.END).strip()
         if not content:
-            messagebox.showinfo(
-                "Roasting Chamber", "Provide something for the persona to roast."
-            )
+            messagebox.showinfo("Roasting Chamber", "Provide something for the persona to roast.")
             return
 
         persona = self.roasting_voice_var.get()
@@ -780,11 +1191,26 @@ class ApertureLauncherGUI(tk.Tk):
         self.roasting_input.delete("1.0", tk.END)
         self._set_roasting_busy(True, f"{persona} is composing a roast...")
 
-        user_prompt = content
+        contextual_prompt = self._compose_roast_prompt(content)
+        self._last_roasting_prompt = contextual_prompt
+
+        if self._uses_openrouter_for_roasts():
+            payload = self._prepare_roasting_payload(history, contextual_prompt)
+            model = self.general_model_var.get()
+            self._pending_roasting_persona = persona
+            self.roasting_status_var.set(f"{persona} is consulting OpenRouter for a roast...")
+            request_chat_completion(
+                self._validated_api_key,
+                model,
+                payload,
+                self._handle_roasting_completion,
+                scheduler=self.after,
+            )
+            return
 
         def finalize_roast() -> None:
             try:
-                roast = generate_roast(persona, user_prompt, rng=self._rng)
+                roast = generate_roast(persona, contextual_prompt, rng=self._rng)
             except Exception as exc:  # pragma: no cover - defensive
                 history.append(
                     {
@@ -811,6 +1237,66 @@ class ApertureLauncherGUI(tk.Tk):
                 self._set_roasting_busy(False)
 
         self.after(120, finalize_roast)
+
+    def _handle_roasting_completion(self, error: Exception | None, content: str | None) -> None:
+        """Handle the result of an OpenRouter roast request."""
+
+        persona = self._pending_roasting_persona or self.roasting_voice_var.get()
+        history = self.roasting_histories.setdefault(
+            persona, [self._system_message(ROASTING_PERSONAS[persona])]
+        )
+        self._pending_roasting_persona = None
+
+        if error or not content:
+            try:
+                fallback = generate_roast(persona, self._last_roasting_prompt, rng=self._rng)
+            except Exception as exc:  # pragma: no cover - defensive
+                history.append(
+                    {
+                        "role": "assistant",
+                        "content": f"Roast generation failed entirely: {exc}",
+                    }
+                )
+                if persona == self.roasting_voice_var.get():
+                    if error:
+                        self._append_chat_message(
+                            self.roasting_display,
+                            "System",
+                            f"OpenRouter roast failed: {error}",
+                        )
+                    else:
+                        self._append_chat_message(
+                            self.roasting_display,
+                            "System",
+                            "OpenRouter returned no roast and the offline fallback also failed.",
+                        )
+                    self._set_roasting_busy(False, "Roast generation failed.")
+                else:
+                    self._set_roasting_busy(False)
+                return
+
+            history.append({"role": "assistant", "content": fallback})
+            if persona == self.roasting_voice_var.get():
+                failure_reason = (
+                    f"OpenRouter roast failed ({error})." if error else "OpenRouter returned no roast."
+                )
+                self._append_chat_message(
+                    self.roasting_display,
+                    "System",
+                    f"{failure_reason} Falling back to the offline generator.",
+                )
+                self._append_chat_message(self.roasting_display, persona, fallback)
+                self._set_roasting_busy(False, f"{persona} delivered a fallback roast.")
+            else:
+                self._set_roasting_busy(False)
+            return
+
+        history.append({"role": "assistant", "content": content})
+        if persona == self.roasting_voice_var.get():
+            self._append_chat_message(self.roasting_display, persona, content)
+            self._set_roasting_busy(False, f"{persona} delivered an OpenRouter roast.")
+        else:
+            self._set_roasting_busy(False)
 
     def clear_roasting_conversation(self) -> None:
         """Reset the active roasting persona's conversation."""
