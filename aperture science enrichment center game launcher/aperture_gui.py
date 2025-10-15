@@ -202,7 +202,14 @@ class ApertureLauncherGUI(tk.Tk):
         self.personas = personas
 
         self.games: List[SteamGame] = []
-        self.chat_history: list[tuple[str, str]] = []
+        self.companion_history: list[tuple[str, str]] = []
+
+        self.companion_display: tk.Text | None = None
+        self.companion_entry: tk.Entry | None = None
+        self.companion_send_button: ttk.Button | None = None
+        self.companion_quick_buttons: list[tk.Button] = []
+        self.companion_usage_label: tk.Label | None = None
+        self.companion_usage_visible = False
 
         self._sync_model_to_env(announce=False)
         self._build_layout()
@@ -238,15 +245,15 @@ class ApertureLauncherGUI(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=24, pady=(0, 16))
 
-        self.chat_tab = tk.Frame(self.notebook, bd=0)
+        self.companion_tab = tk.Frame(self.notebook, bd=0)
         self.games_tab = tk.Frame(self.notebook, bd=0)
         self.settings_tab = tk.Frame(self.notebook, bd=0)
 
-        self.notebook.add(self.chat_tab, text="Chatbot")
-        self.notebook.add(self.games_tab, text="Games")
+        self.notebook.add(self.companion_tab, text="Companion AI")
+        self.notebook.add(self.games_tab, text="Games & Roasts")
         self.notebook.add(self.settings_tab, text="Settings")
 
-        self._build_chat_tab()
+        self._build_companion_tab()
         self._build_games_tab()
         self._build_settings_tab()
 
@@ -261,131 +268,137 @@ class ApertureLauncherGUI(tk.Tk):
         )
         self.status_bar.pack(fill="x", side="bottom")
 
-    def _build_chat_tab(self) -> None:
-        self.chat_scroll = ScrollableFrame(self.chat_tab)
-        self.chat_scroll.pack(fill="both", expand=True, padx=12, pady=12)
-        self.chat_container = self.chat_scroll.inner
+    def _build_companion_tab(self) -> None:
+        self.companion_scroll = ScrollableFrame(self.companion_tab)
+        self.companion_scroll.pack(fill="both", expand=True, padx=12, pady=12)
+        self.companion_container = self.companion_scroll.inner
 
-        self.chat_header = tk.Label(
-            self.chat_container,
+        self.companion_header = tk.Label(
+            self.companion_container,
             textvariable=self.persona_var,
             font=("Segoe UI", 14, "bold"),
             anchor="w",
             pady=6,
         )
-        self.chat_header.pack(fill="x", pady=(0, 8))
+        self.companion_header.pack(fill="x", pady=(0, 8))
 
-        self.chat_model_frame = tk.Frame(self.chat_container, bd=0)
-        self.chat_model_frame.pack(fill="x", pady=(0, 8))
+        self.companion_model_frame = tk.Frame(self.companion_container, bd=0)
+        self.companion_model_frame.pack(fill="x", pady=(0, 8))
 
-        self.chat_model_label = tk.Label(
-            self.chat_model_frame,
+        self.companion_model_label = tk.Label(
+            self.companion_model_frame,
             text="OpenRouter model:",
             font=("Segoe UI", 10),
             anchor="w",
         )
-        self.chat_model_label.pack(side="left")
+        self.companion_model_label.pack(side="left")
 
         model_state = "readonly" if self.available_models else "disabled"
-        self.chat_model_combo = ttk.Combobox(
-            self.chat_model_frame,
+        self.companion_model_combo = ttk.Combobox(
+            self.companion_model_frame,
             textvariable=self.model_var,
             values=self.model_choices,
             state=model_state,
             width=42,
         )
-        self.chat_model_combo.pack(side="left", padx=(8, 0))
+        self.companion_model_combo.pack(side="left", padx=(8, 0))
         if self.available_models:
-            self.chat_model_combo.bind("<<ComboboxSelected>>", self.on_model_selected)
+            self.companion_model_combo.bind(
+                "<<ComboboxSelected>>", self.on_model_selected
+            )
 
-        usage_frame = tk.Frame(self.chat_container, bd=0)
+        usage_frame = tk.Frame(self.companion_container, bd=0)
         usage_frame.pack(fill="x")
 
-        self.chat_usage_label = tk.Label(
+        self.companion_usage_label = tk.Label(
             usage_frame,
             text="",
             font=("Segoe UI", 9),
             anchor="w",
             pady=2,
         )
-        self.chat_usage_visible = False
+        self.companion_usage_visible = False
 
-        self.react_frame = tk.Frame(self.chat_container, bd=0)
-        self.react_frame.pack(fill="x", pady=(0, 6))
+        self.companion_quick_frame = tk.Frame(self.companion_container, bd=0)
+        self.companion_quick_frame.pack(fill="x", pady=(0, 6))
 
-        self.react_label = tk.Label(
-            self.react_frame,
+        self.companion_quick_label = tk.Label(
+            self.companion_quick_frame,
             text="Quick Responses:",
             font=("Segoe UI", 9, "bold"),
             anchor="w",
             pady=2,
         )
-        self.react_label.pack(side="left")
+        self.companion_quick_label.pack(side="left")
 
-        self.react_buttons_frame = tk.Frame(self.react_frame, bd=0)
-        self.react_buttons_frame.pack(side="left", padx=(8, 0))
+        self.companion_buttons_frame = tk.Frame(
+            self.companion_quick_frame, bd=0
+        )
+        self.companion_buttons_frame.pack(side="left", padx=(8, 0))
 
-        self.react_buttons: list[tk.Button] = []
+        self.companion_quick_buttons = []
         for text in ("Roast Me", "Compliment", "Help"):
             button = ttk.Button(
-                self.react_buttons_frame,
+                self.companion_buttons_frame,
                 text=text,
                 width=12,
-                command=lambda t=text: self.on_reaction_button(t),
+                command=lambda t=text: self.on_companion_reaction(t),
             )
             button.pack(side="left", padx=(0, 6))
-            self.react_buttons.append(button)
+            self.companion_quick_buttons.append(button)
 
-        self.chat_text_frame = tk.Frame(self.chat_container, bd=0)
-        self.chat_text_frame.pack(fill="both", expand=True)
+        self.companion_text_frame = tk.Frame(self.companion_container, bd=0)
+        self.companion_text_frame.pack(fill="both", expand=True)
 
-        self.chat_scrollbar = ttk.Scrollbar(self.chat_text_frame)
-        self.chat_scrollbar.pack(side="right", fill="y")
+        self.companion_scrollbar = ttk.Scrollbar(self.companion_text_frame)
+        self.companion_scrollbar.pack(side="right", fill="y")
 
-        self.chat_display = tk.Text(
-            self.chat_text_frame,
+        self.companion_display = tk.Text(
+            self.companion_text_frame,
             wrap="word",
             state="disabled",
-            yscrollcommand=self.chat_scrollbar.set,
+            yscrollcommand=self.companion_scrollbar.set,
             font=("Segoe UI", 11),
             relief="flat",
             bd=0,
         )
-        self.chat_display.pack(fill="both", expand=True)
-        self.chat_scrollbar.config(command=self.chat_display.yview)
+        self.companion_display.pack(fill="both", expand=True)
+        self.companion_scrollbar.config(command=self.companion_display.yview)
 
-        self.chat_display.tag_configure("system", spacing1=2, spacing3=6)
-        self.chat_display.tag_configure(
+        self.companion_display.tag_configure("system", spacing1=2, spacing3=6)
+        self.companion_display.tag_configure(
             "system_speaker",
             font=("Segoe UI Semibold", 11),
         )
-        self.chat_display.tag_configure("user", spacing1=2, spacing3=6)
-        self.chat_display.tag_configure(
+        self.companion_display.tag_configure("user", spacing1=2, spacing3=6)
+        self.companion_display.tag_configure(
             "user_speaker",
             font=("Segoe UI Semibold", 11),
         )
-        self.chat_display.tag_configure("persona", spacing1=2, spacing3=6)
-        self.chat_display.tag_configure(
+        self.companion_display.tag_configure("persona", spacing1=2, spacing3=6)
+        self.companion_display.tag_configure(
             "persona_speaker",
             font=("Segoe UI Semibold", 11),
         )
 
-        self.chat_input_frame = tk.Frame(self.chat_container, bd=0)
-        self.chat_input_frame.pack(fill="x", pady=(10, 0))
+        self.companion_input_frame = tk.Frame(self.companion_container, bd=0)
+        self.companion_input_frame.pack(fill="x", pady=(10, 0))
 
-        self.chat_entry = tk.Entry(
-            self.chat_input_frame,
+        self.companion_entry = tk.Entry(
+            self.companion_input_frame,
             font=("Segoe UI", 11),
         )
-        self.chat_entry.pack(fill="x", side="left", expand=True, padx=(0, 10))
-        self.chat_entry.bind("<Return>", self.on_send_chat)
-
-        self.send_button = ttk.Button(
-            self.chat_input_frame,
-            text="Send",
-            command=self.on_send_chat,
+        self.companion_entry.pack(
+            fill="x", side="left", expand=True, padx=(0, 10)
         )
-        self.send_button.pack(side="right")
+        self.companion_entry.bind("<Return>", self.on_send_companion_chat)
+
+        self.companion_send_button = ttk.Button(
+            self.companion_input_frame,
+            text="Send",
+            command=self.on_send_companion_chat,
+        )
+        self.companion_send_button.pack(side="right")
 
     def _build_games_tab(self) -> None:
         self.games_scroll = ScrollableFrame(self.games_tab)
@@ -694,16 +707,16 @@ class ApertureLauncherGUI(tk.Tk):
         self.configure(bg=palette["background"])
         for widget in (
             self.header_frame,
-            self.chat_tab,
+            self.companion_tab,
             self.games_tab,
             self.settings_tab,
         ):
             widget.configure(bg=palette["background"])
 
         surface_widgets = [
-            self.chat_scroll,
-            self.chat_scroll.canvas,
-            self.chat_container,
+            self.companion_scroll,
+            self.companion_scroll.canvas,
+            self.companion_container,
             self.games_scroll,
             self.games_scroll.canvas,
             self.games_container,
@@ -712,12 +725,12 @@ class ApertureLauncherGUI(tk.Tk):
             self.settings_container,
             self.games_tree_frame,
             self.games_roast_frame,
-            self.chat_model_frame,
-            self.react_frame,
-            self.react_buttons_frame,
+            self.companion_model_frame,
+            self.companion_quick_frame,
+            self.companion_buttons_frame,
             self.api_key_row,
-            self.chat_text_frame,
-            self.chat_input_frame,
+            self.companion_text_frame,
+            self.companion_input_frame,
             self.games_controls,
         ]
         for widget in surface_widgets:
@@ -728,12 +741,12 @@ class ApertureLauncherGUI(tk.Tk):
         self.accent_bar.configure(bg=palette["accent"])
         self.status_bar.configure(bg=palette["surface_muted"], fg=palette["text_muted"])
 
-        # Chat widgets
-        self.chat_header.configure(
+        # Companion widgets
+        self.companion_header.configure(
             bg=palette["surface"],
             fg=palette["accent_alt"],
         )
-        self.chat_display.configure(
+        self.companion_display.configure(
             bg=palette["surface_highlight"],
             fg=palette["text"],
             insertbackground=palette["accent"],
@@ -743,19 +756,23 @@ class ApertureLauncherGUI(tk.Tk):
             fg=palette["text"],
             insertbackground=palette["accent"],
         )
-        self.chat_display.tag_configure("system", foreground=palette["text_muted"])
-        self.chat_display.tag_configure("system_speaker", foreground=palette["accent"])
-        self.chat_display.tag_configure("user", foreground=palette["accent"])
-        self.chat_display.tag_configure(
+        self.companion_display.tag_configure(
+            "system", foreground=palette["text_muted"]
+        )
+        self.companion_display.tag_configure(
+            "system_speaker", foreground=palette["accent"]
+        )
+        self.companion_display.tag_configure("user", foreground=palette["accent"])
+        self.companion_display.tag_configure(
             "user_speaker",
             foreground=palette["accent_hover"],
         )
-        self.chat_display.tag_configure("persona", foreground=palette["text"])
-        self.chat_display.tag_configure(
+        self.companion_display.tag_configure("persona", foreground=palette["text"])
+        self.companion_display.tag_configure(
             "persona_speaker",
             foreground=palette["accent_alt"],
         )
-        for entry in (self.chat_entry, self.openrouter_key_entry):
+        for entry in (self.companion_entry, self.openrouter_key_entry):
             entry.configure(
                 bg=palette["surface_highlight"],
                 fg=palette["text"],
@@ -806,14 +823,14 @@ class ApertureLauncherGUI(tk.Tk):
             foreground=[("disabled", palette["text_muted"])],
         )
         button_candidates = [
-            self.send_button,
+            self.companion_send_button,
             self.scan_button,
             self.launch_button,
             self.roast_button,
             self.toggle_key_button,
             self.save_key_button,
             getattr(self, "save_key_secure_button", None),
-        ] + self.react_buttons
+        ] + self.companion_quick_buttons
         for button in filter(None, button_candidates):
             button.configure(style="Accent.TButton")
 
@@ -823,9 +840,9 @@ class ApertureLauncherGUI(tk.Tk):
             self.games_status,
             self.persona_intro_label,
             self.ai_note_label,
-            self.chat_model_label,
-            self.react_label,
-            self.chat_usage_label,
+            self.companion_model_label,
+            self.companion_quick_label,
+            self.companion_usage_label,
             self.model_label_settings,
             self.model_status_label,
             self.api_key_status_label,
@@ -901,36 +918,36 @@ class ApertureLauncherGUI(tk.Tk):
         else:
             state = "disabled"
 
-        self.chat_model_combo.configure(state=state)
+        self.companion_model_combo.configure(state=state)
         self.model_combo_settings.configure(state=state)
 
         button_state = "normal" if self.ai_responses_enabled else "disabled"
         self.roast_button.configure(state=button_state)
-        for button in self.react_buttons:
+        for button in self.companion_quick_buttons:
             button.configure(state=button_state)
 
-    def _set_chat_usage_text(self, text: str | None) -> None:
+    def _set_companion_usage_text(self, text: str | None) -> None:
         if text:
-            self.chat_usage_label.configure(text=text)
-            if not self.chat_usage_visible:
-                self.chat_usage_label.pack(fill="x", pady=(0, 6))
-                self.chat_usage_visible = True
+            self.companion_usage_label.configure(text=text)
+            if not self.companion_usage_visible:
+                self.companion_usage_label.pack(fill="x", pady=(0, 6))
+                self.companion_usage_visible = True
         else:
-            if self.chat_usage_visible:
-                self.chat_usage_label.pack_forget()
-                self.chat_usage_visible = False
+            if self.companion_usage_visible:
+                self.companion_usage_label.pack_forget()
+                self.companion_usage_visible = False
 
     def refresh_openrouter_usage(self) -> None:
         api_key = get_openrouter_api_key() or ""
         if not api_key.strip():
-            self._set_chat_usage_text(None)
+            self._set_companion_usage_text(None)
             return
 
         summary = fetch_openrouter_usage_summary(api_key)
         if summary:
-            self._set_chat_usage_text(f"OpenRouter usage: {summary}")
+            self._set_companion_usage_text(f"OpenRouter usage: {summary}")
         else:
-            self._set_chat_usage_text("OpenRouter usage: unavailable.")
+            self._set_companion_usage_text("OpenRouter usage: unavailable.")
 
     def display_game_roasts(self, lines: Sequence[str]) -> None:
         self.games_roast_text.configure(state="normal")
@@ -962,49 +979,54 @@ class ApertureLauncherGUI(tk.Tk):
             return "Static mode relies on offline banter scripts from each personality core."
         return "No AI mode keeps personas silent while you interact manually."
 
-    def append_chat(
+    def append_companion_message(
         self,
         message: str,
         speaker: str | None = None,
         tag: str = "",
         log: bool = False,
     ) -> None:
-        """Insert a new line into the chat display."""
+        """Insert a new line into the companion chat display."""
 
-        self.chat_display.configure(state="normal")
+        if not self.companion_display:
+            return
+
+        self.companion_display.configure(state="normal")
         final_tag = tag or (
             "user"
             if speaker == "Test Subject"
             else ("persona" if speaker == self.current_persona.name else "system")
         )
         if speaker:
-            self.chat_display.insert(
+            self.companion_display.insert(
                 "end",
                 f"{speaker}: ",
                 (f"{final_tag}_speaker",),
-        )
-        self.chat_display.insert("end", f"{message}\n", (final_tag,))
-        self.chat_display.configure(state="disabled")
-        self.chat_display.see("end")
+            )
+        self.companion_display.insert("end", f"{message}\n", (final_tag,))
+        self.companion_display.configure(state="disabled")
+        self.companion_display.see("end")
         if log and speaker:
-            self.chat_history.append((speaker, message))
-            if len(self.chat_history) > 50:
-                self.chat_history.pop(0)
+            self.companion_history.append((speaker, message))
+            if len(self.companion_history) > 50:
+                self.companion_history.pop(0)
 
     def _announce_welcome(self) -> None:
         welcome = (
             "Aperture Science Enrichment Centre System: Hello and welcome to the"
             " Aperture Science Enrichment Centre Game Launcher."
         )
-        self.append_chat(welcome, speaker="System", tag="system", log=True)
+        self.append_companion_message(
+            welcome, speaker="System", tag="system", log=True
+        )
         if self.ai_responses_enabled:
-            self.append_chat(
+            self.append_companion_message(
                 self.current_persona.intro,
                 speaker=self.current_persona.name,
                 tag="persona",
                 log=True,
             )
-            self.append_chat(
+            self.append_companion_message(
                 compose_os_roast(
                     self.current_persona,
                     allow_dynamic=self.use_dynamic_ai,
@@ -1031,13 +1053,15 @@ class ApertureLauncherGUI(tk.Tk):
         return value
 
     # ------------------------------------------------------------------ event handlers
-    def process_user_message(self, message: str, *, source: str = "Test Subject") -> None:
+    def process_companion_message(
+        self, message: str, *, source: str = "Test Subject"
+    ) -> None:
         cleaned = message.strip()
         if not cleaned:
             return
 
         tag = "user" if source == "Test Subject" else "system"
-        self.append_chat(cleaned, speaker=source, tag=tag, log=True)
+        self.append_companion_message(cleaned, speaker=source, tag=tag, log=True)
 
         if not self.ai_responses_enabled:
             return
@@ -1047,24 +1071,26 @@ class ApertureLauncherGUI(tk.Tk):
             cleaned,
             allow_dynamic=self.use_dynamic_ai,
             model=self.current_model,
-            history=self.chat_history,
+            history=self.companion_history,
         )
-        self.append_chat(
+        self.append_companion_message(
             reply, speaker=self.current_persona.name, tag="persona", log=True
         )
 
-    def on_send_chat(self, *_: object) -> None:
-        message = self.chat_entry.get()
-        self.chat_entry.delete(0, tk.END)
-        self.process_user_message(message)
+    def on_send_companion_chat(self, *_: object) -> None:
+        if not self.companion_entry:
+            return
+        message = self.companion_entry.get()
+        self.companion_entry.delete(0, tk.END)
+        self.process_companion_message(message)
 
-    def on_reaction_button(self, label: str) -> None:
+    def on_companion_reaction(self, label: str) -> None:
         prompts = {
             "Roast Me": "Roast me about my test performance.",
             "Compliment": "Give me a quick compliment before I head into the chamber.",
             "Help": "I need help figuring out what to do next.",
         }
-        self.process_user_message(prompts.get(label, label))
+        self.process_companion_message(prompts.get(label, label))
 
     def on_scan_games(self) -> None:
         self.scan_button.configure(state="disabled")
@@ -1108,13 +1134,6 @@ class ApertureLauncherGUI(tk.Tk):
                         model=self.current_model,
                     )
                     self.display_game_roasts(roasts)
-                    for line in roasts:
-                        self.append_chat(
-                            line,
-                            speaker=self.current_persona.name,
-                            tag="persona",
-                            log=True,
-                        )
                 else:
                     self.display_game_roasts(
                         ["Enable Static or Dynamic mode to receive roasts."]
@@ -1150,12 +1169,6 @@ class ApertureLauncherGUI(tk.Tk):
                     model=self.current_model,
                 )
                 self.display_game_roasts(roasts)
-                self.append_chat(
-                    roasts[0],
-                    speaker=self.current_persona.name,
-                    tag="persona",
-                    log=True,
-                )
             else:
                 self.display_game_roasts(["Enable Static or Dynamic mode to receive roasts."])
         else:
@@ -1193,12 +1206,7 @@ class ApertureLauncherGUI(tk.Tk):
             self.display_game_roasts(["Select a game from the list first."])
             return
 
-        self.append_chat(
-            "Requesting AI roast for the current selection.",
-            speaker="System",
-            tag="system",
-            log=True,
-        )
+        self.status_var.set("Requesting AI roast for the current selection.")
         roasts = compose_game_roasts(
             self.current_persona,
             games_to_roast,
@@ -1206,13 +1214,6 @@ class ApertureLauncherGUI(tk.Tk):
             model=self.current_model,
         )
         self.display_game_roasts(roasts)
-        for line in roasts:
-            self.append_chat(
-                line,
-                speaker=self.current_persona.name,
-                tag="persona",
-                log=True,
-            )
 
     def on_persona_selected(self, *_: object) -> None:
         selected = self.persona_var.get()
@@ -1222,29 +1223,18 @@ class ApertureLauncherGUI(tk.Tk):
 
         self.current_persona = persona
         self.persona_intro_label.configure(text=persona.intro)
-        self.append_chat(
-            f"Persona switched to {persona.name}.",
-            speaker="System",
-            tag="system",
-            log=True,
-        )
+        self.status_var.set(f"Persona switched to {persona.name}.")
         if self.ai_responses_enabled:
-            self.append_chat(
-                persona.intro,
-                speaker=persona.name,
-                tag="persona",
-                log=True,
-            )
-            self.append_chat(
-                compose_os_roast(
+            persona_lines = [
+                f"{persona.name}: {persona.intro}",
+                f"{persona.name}: "
+                + compose_os_roast(
                     persona,
                     allow_dynamic=self.use_dynamic_ai,
                     model=self.current_model,
                 ),
-                speaker=persona.name,
-                tag="persona",
-                log=True,
-            )
+            ]
+            self.display_game_roasts(persona_lines)
         self.persona_var.set(persona.name)
 
     def on_theme_change(self) -> None:
@@ -1265,35 +1255,19 @@ class ApertureLauncherGUI(tk.Tk):
         else:
             self.status_var.set("AI mode set to Static.")
         if mode == AI_MODE_NONE and previous_mode != AI_MODE_NONE:
-            self.append_chat(
-                "AI responses muted. Manual interaction only.",
-                speaker="System",
-                tag="system",
-                log=True,
-            )
+            self.display_game_roasts(["AI responses muted. Manual interaction only."])
         if mode != AI_MODE_NONE and previous_mode == AI_MODE_NONE:
-            self.append_chat(
+            persona_lines = [
                 "AI responses re-enabled. Persona coming back online.",
-                speaker="System",
-                tag="system",
-                log=True,
-            )
-            self.append_chat(
-                self.current_persona.intro,
-                speaker=self.current_persona.name,
-                tag="persona",
-                log=True,
-            )
-            self.append_chat(
-                compose_os_roast(
+                f"{self.current_persona.name}: {self.current_persona.intro}",
+                f"{self.current_persona.name}: "
+                + compose_os_roast(
                     self.current_persona,
                     allow_dynamic=self.use_dynamic_ai,
                     model=self.current_model,
                 ),
-                speaker=self.current_persona.name,
-                tag="persona",
-                log=True,
-            )
+            ]
+            self.display_game_roasts(persona_lines)
         self._last_ai_mode = mode
 
     def on_model_selected(self, *_: object) -> None:
