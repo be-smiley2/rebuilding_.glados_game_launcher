@@ -50,13 +50,16 @@ class ApertureLauncherGUI(tk.Tk):
 
         self.theme_var = tk.StringVar(value="dark")
         self.status_var = tk.StringVar(value="Awaiting scan.")
-        self.general_status_var = tk.StringVar(value="Apply your OpenRouter key to begin chatting.")
+        self.general_status_var = tk.StringVar(
+            value="Apply your OpenRouter key to enable OpenRouter chat and roasts."
+        )
         self.roasting_status_var = tk.StringVar(
-            value="Select a persona and optionally choose a game to roast."
+            value="Select a persona, choose an OpenRouter model, and optionally pick a Steam game."
         )
         self.media_status_var = tk.StringVar(value="Provide Jellyfin details to connect.")
         self.api_key_var = tk.StringVar(value=os.environ.get(OPENROUTER_API_KEY_ENV, ""))
         self.general_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
+        self.roasting_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
         self.general_persona_var = tk.StringVar(value=list(GENERAL_CHAT_PERSONAS.keys())[0])
         self.roasting_voice_var = tk.StringVar(value=list(ROASTING_PERSONAS.keys())[0])
         self.roasting_game_var = tk.StringVar(value="")
@@ -184,7 +187,7 @@ class ApertureLauncherGUI(tk.Tk):
         scrollbar.pack(side="right", fill="y")
 
         self.tree.bind("<Double-Button-1>", lambda event: self.launch_selected_game())
-        self.tree.bind("<<TreeviewSelect>>", lambda event: self._update_launch_button_state())
+        self.tree.bind("<<TreeviewSelect>>", self._handle_game_selection)
 
         status_bar = ttk.Frame(parent)
         status_bar.pack(fill="x", padx=24, pady=(0, 24))
@@ -220,7 +223,8 @@ class ApertureLauncherGUI(tk.Tk):
         ttk.Label(
             config,
             text=(
-                "Enter your OpenRouter API key (required). The key stays only in memory for this session."
+                "Enter your OpenRouter API key (required for OpenRouter chat and roasts). "
+                "The key stays only in memory for this session."
             ),
             wraplength=520,
         ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
@@ -393,12 +397,56 @@ class ApertureLauncherGUI(tk.Tk):
     def _build_roasting_chat_tab(self, parent: ttk.Frame) -> None:
         """Create the roasting chatbot interface with persona switching."""
 
-        settings = ttk.Frame(parent)
-        settings.pack(fill="x", padx=24, pady=(24, 12))
+        config = ttk.LabelFrame(parent, text="OpenRouter Configuration")
+        config.pack(fill="x", padx=24, pady=(24, 12))
+        config.columnconfigure(1, weight=1)
 
-        ttk.Label(settings, text="Persona:").pack(side="left")
+        ttk.Label(config, text="API Key:").grid(row=0, column=0, sticky="w")
+        self.roasting_api_key_entry = ttk.Entry(
+            config,
+            textvariable=self.api_key_var,
+            show="*",
+            width=52,
+        )
+        self.roasting_api_key_entry.grid(row=0, column=1, sticky="ew")
+
+        self.roasting_api_key_apply_button = ttk.Button(
+            config,
+            text="Apply Key",
+            command=self.apply_api_key,
+        )
+        self.roasting_api_key_apply_button.grid(row=0, column=2, padx=(12, 0))
+
+        ttk.Label(
+            config,
+            text=(
+                "Roasting Chamber shares the OpenRouter key with General Chat. "
+                "Choose a model before requesting online roasts."
+            ),
+            wraplength=520,
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
+        ttk.Label(config, text="Model:").grid(row=2, column=0, sticky="w", pady=(12, 0))
+        self.roasting_model_combo = ttk.Combobox(
+            config,
+            textvariable=self.roasting_model_var,
+            values=GENERAL_CHAT_MODELS,
+            state="readonly",
+        )
+        self.roasting_model_combo.grid(row=2, column=1, sticky="ew", pady=(12, 0))
+
+        ttk.Label(
+            config,
+            text="Models are drawn from the shared OpenRouter catalog.",
+            wraplength=320,
+        ).grid(row=2, column=2, sticky="w", padx=(12, 0), pady=(12, 0))
+
+        controls = ttk.Frame(parent)
+        controls.pack(fill="x", padx=24, pady=(0, 12))
+
+        ttk.Label(controls, text="Persona:").pack(side="left")
         persona_menu = ttk.OptionMenu(
-            settings,
+            controls,
             self.roasting_voice_var,
             self.roasting_voice_var.get(),
             *ROASTING_PERSONAS.keys(),
@@ -434,7 +482,7 @@ class ApertureLauncherGUI(tk.Tk):
         os_check.pack(side="left", padx=(18, 0))
 
         self.roasting_clear_button = ttk.Button(
-            settings,
+            controls,
             text="Clear Persona History",
             command=self.clear_roasting_conversation,
         )
@@ -647,6 +695,8 @@ class ApertureLauncherGUI(tk.Tk):
         self.general_send_button.configure(state=state)
         self.general_clear_button.configure(state=state)
         self.api_key_apply_button.configure(state=state)
+        if hasattr(self, "roasting_api_key_apply_button"):
+            self.roasting_api_key_apply_button.configure(state=state)
 
         if status is None:
             persona = self.general_persona_var.get()
@@ -870,6 +920,8 @@ class ApertureLauncherGUI(tk.Tk):
             return
 
         self._set_general_busy(True, "Validating API key with OpenRouter...")
+        if not self.roasting_busy:
+            self.roasting_status_var.set("Validating OpenRouter API key...")
 
         def on_complete(error: Exception | None) -> None:
             if error:
@@ -881,11 +933,19 @@ class ApertureLauncherGUI(tk.Tk):
                     "Could not validate the OpenRouter key. Please verify the key and try again.\n\n"
                     f"Details: {error}",
                 )
+                if not self.roasting_busy:
+                    self.roasting_status_var.set(
+                        "OpenRouter key invalid. Offline generator remains available."
+                    )
                 return
 
             self.api_key_valid = True
             self._validated_api_key = api_key
             self._set_general_busy(False, "API key validated. Ready to chat.")
+            if not self.roasting_busy:
+                self.roasting_status_var.set(
+                    "API key validated. Select a model before requesting online roasts."
+                )
 
         verify_api_key(api_key, on_complete, scheduler=self.after)
 
@@ -901,6 +961,25 @@ class ApertureLauncherGUI(tk.Tk):
             persona = self.roasting_voice_var.get()
             status = "Synthesizing a roast..." if busy else f"{persona} ready to roast."
         self.roasting_status_var.set(status)
+
+    def _handle_game_selection(self, event: tk.Event | None = None) -> None:
+        """Sync launcher selection with the roasting focus picker."""
+
+        self._update_launch_button_state()
+
+        if not hasattr(self, "roasting_game_var"):
+            return
+
+        selection = self.tree.selection()
+        if not selection:
+            return
+
+        app_id = selection[0]
+        game = next((game for game in self.games if game.app_id == app_id), None)
+        if game is None:
+            return
+
+        self.roasting_game_var.set(game.name)
 
     def _update_launch_button_state(self) -> None:
         """Enable or disable the launch button based on selection."""
@@ -958,7 +1037,7 @@ class ApertureLauncherGUI(tk.Tk):
 
         self.tree.selection_set(self.tree.get_children()[0])
         self.tree.focus(self.tree.get_children()[0])
-        self._update_launch_button_state()
+        self._handle_game_selection()
         self._set_status(f"Found {len(games)} game(s). Select one to launch.")
 
     def launch_selected_game(self) -> None:
@@ -1014,7 +1093,9 @@ class ApertureLauncherGUI(tk.Tk):
                 "Apply your OpenRouter API key before chatting. Click the Apply Key button to validate it.",
             )
             if not self.general_busy:
-                self.general_status_var.set("Apply your OpenRouter key to begin chatting.")
+                self.general_status_var.set(
+                    "Apply your OpenRouter key to enable OpenRouter chat and roasts."
+                )
             return
 
         model = self.general_model_var.get().strip()
@@ -1136,7 +1217,10 @@ class ApertureLauncherGUI(tk.Tk):
     def _uses_openrouter_for_roasts(self) -> bool:
         """Return True if OpenRouter should be used for roast generation."""
 
-        return self.api_key_valid and bool(self._validated_api_key)
+        model_name = ""
+        if hasattr(self, "roasting_model_var"):
+            model_name = self.roasting_model_var.get().strip()
+        return self.api_key_valid and bool(self._validated_api_key) and bool(model_name)
 
     def _compose_roast_prompt(self, base_prompt: str) -> str:
         """Combine user input, selected game, and OS details into a single prompt."""
@@ -1194,11 +1278,14 @@ class ApertureLauncherGUI(tk.Tk):
         contextual_prompt = self._compose_roast_prompt(content)
         self._last_roasting_prompt = contextual_prompt
 
-        if self._uses_openrouter_for_roasts():
+        uses_openrouter = self._uses_openrouter_for_roasts()
+        if uses_openrouter:
             payload = self._prepare_roasting_payload(history, contextual_prompt)
-            model = self.general_model_var.get()
+            model = self.roasting_model_var.get().strip()
             self._pending_roasting_persona = persona
-            self.roasting_status_var.set(f"{persona} is consulting OpenRouter for a roast...")
+            self.roasting_status_var.set(
+                f"{persona} is consulting {model} via OpenRouter for a roast..."
+            )
             request_chat_completion(
                 self._validated_api_key,
                 model,
@@ -1207,6 +1294,15 @@ class ApertureLauncherGUI(tk.Tk):
                 scheduler=self.after,
             )
             return
+
+        if (
+            self.api_key_valid
+            and bool(self._validated_api_key)
+            and not self.roasting_model_var.get().strip()
+        ):
+            self.roasting_status_var.set(
+                "Select an OpenRouter model to enable online roasts. Using offline fallback."
+            )
 
         def finalize_roast() -> None:
             try:
