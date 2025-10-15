@@ -249,6 +249,7 @@ ROASTING_SCRIPTS = {
 
 
 OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
 
 
 class ApertureLauncherGUI(tk.Tk):
@@ -268,7 +269,7 @@ class ApertureLauncherGUI(tk.Tk):
 
         self.theme_var = tk.StringVar(value="dark")
         self.status_var = tk.StringVar(value="Awaiting scan.")
-        self.general_status_var = tk.StringVar(value="Enter a prompt to begin chatting.")
+        self.general_status_var = tk.StringVar(value="Apply your OpenRouter key to begin chatting.")
         self.roasting_status_var = tk.StringVar(value="Select a persona to begin the roast.")
         self.api_key_var = tk.StringVar()
         self.general_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
@@ -284,6 +285,8 @@ class ApertureLauncherGUI(tk.Tk):
         )
         self.general_messages: List[Dict[str, str]] = [self._system_message(self.general_system_prompt)]
         self.general_busy = False
+        self.api_key_valid = False
+        self._validated_api_key = ""
 
         self.roasting_histories: Dict[str, List[Dict[str, str]]] = {
             persona: [self._system_message(prompt)] for persona, prompt in ROASTING_PERSONAS.items()
@@ -292,6 +295,8 @@ class ApertureLauncherGUI(tk.Tk):
 
         self._build_ui()
         self._apply_theme()
+
+        self.api_key_var.trace_add("write", self._invalidate_api_key)
 
     def _build_ui(self) -> None:
         """Create and layout the interface widgets."""
@@ -401,6 +406,13 @@ class ApertureLauncherGUI(tk.Tk):
         ttk.Label(config, text="API Key:").grid(row=0, column=0, sticky="w")
         self.api_key_entry = ttk.Entry(config, textvariable=self.api_key_var, show="*", width=52)
         self.api_key_entry.grid(row=0, column=1, sticky="ew")
+
+        self.api_key_apply_button = ttk.Button(
+            config,
+            text="Apply Key",
+            command=self.apply_api_key,
+        )
+        self.api_key_apply_button.grid(row=0, column=2, padx=(12, 0))
 
         ttk.Label(
             config,
@@ -665,10 +677,81 @@ class ApertureLauncherGUI(tk.Tk):
         state = "disabled" if busy else "normal"
         self.general_send_button.configure(state=state)
         self.general_clear_button.configure(state=state)
+        self.api_key_apply_button.configure(state=state)
 
         if status is None:
             status = "Contacting OpenRouter..." if busy else "Ready for your next prompt."
         self.general_status_var.set(status)
+
+    def _invalidate_api_key(self, *_: object) -> None:
+        """Mark the cached OpenRouter key as invalid when it changes."""
+
+        if self.api_key_valid:
+            self.api_key_valid = False
+            self._validated_api_key = ""
+            if not self.general_busy:
+                self.general_status_var.set("API key changed. Click Apply Key to validate.")
+
+    def apply_api_key(self) -> None:
+        """Validate the entered OpenRouter key before allowing chat usage."""
+
+        if self.general_busy:
+            messagebox.showinfo(
+                "General Chat",
+                "Please wait for the current operation to finish before applying a new key.",
+            )
+            return
+
+        api_key = self.api_key_var.get().strip()
+        if not api_key:
+            messagebox.showerror("General Chat", "Enter an OpenRouter API key before applying.")
+            return
+
+        self._set_general_busy(True, "Validating API key with OpenRouter...")
+
+        def on_complete(error: Exception | None) -> None:
+            if error:
+                self.api_key_valid = False
+                self._validated_api_key = ""
+                self._set_general_busy(False, "API key validation failed. See details above.")
+                messagebox.showerror(
+                    "General Chat",
+                    "Could not validate the OpenRouter key. Please verify the key and try again.\n\n"
+                    f"Details: {error}",
+                )
+                return
+
+            self.api_key_valid = True
+            self._validated_api_key = api_key
+            self._set_general_busy(False, "API key validated. Ready to chat.")
+
+        self._verify_openrouter_key(api_key, on_complete)
+
+    def _verify_openrouter_key(
+        self,
+        api_key: str,
+        on_complete: Callable[[Exception | None], None],
+    ) -> None:
+        """Confirm the API key is accepted by OpenRouter using a lightweight request."""
+
+        def worker() -> None:
+            try:
+                response = requests.get(
+                    OPENROUTER_MODELS_URL,
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Accept": "application/json",
+                    },
+                    timeout=30,
+                )
+                response.raise_for_status()
+            except Exception as exc:  # pragma: no cover - network dependent
+                self.after(0, lambda exc=exc: on_complete(exc))
+                return
+
+            self.after(0, lambda: on_complete(None))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _set_roasting_busy(self, busy: bool, status: str | None = None) -> None:
         """Enable or disable roasting chat controls."""
@@ -765,6 +848,15 @@ class ApertureLauncherGUI(tk.Tk):
         api_key = self.api_key_var.get().strip()
         if not api_key:
             messagebox.showerror("General Chat", "An OpenRouter API key is required.")
+            return
+
+        if not self.api_key_valid or api_key != self._validated_api_key:
+            messagebox.showerror(
+                "General Chat",
+                "Apply your OpenRouter API key before chatting. Click the Apply Key button to validate it.",
+            )
+            if not self.general_busy:
+                self.general_status_var.set("Apply your OpenRouter key to begin chatting.")
             return
 
         model = self.general_model_var.get().strip()
