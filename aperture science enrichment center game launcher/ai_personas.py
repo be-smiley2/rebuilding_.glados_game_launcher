@@ -331,7 +331,7 @@ def compose_os_roast(
     template = persona.os_roasts.get(os_name) or persona.os_roasts.get("default")
     if template:
         return template.format(os=os_name)
-    return f"{persona.name} is temporarily speechless about {os_name}."
+    return f"Temporarily speechless about {os_name}. Logging this anomaly."
 
 
 def compose_game_roasts(
