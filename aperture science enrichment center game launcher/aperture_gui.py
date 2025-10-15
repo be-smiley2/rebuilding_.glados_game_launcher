@@ -239,14 +239,17 @@ class ApertureLauncherGUI(tk.Tk):
         self.notebook.pack(fill="both", expand=True, padx=24, pady=(0, 16))
 
         self.chat_tab = tk.Frame(self.notebook, bd=0)
+        self.roast_tab = tk.Frame(self.notebook, bd=0)
         self.games_tab = tk.Frame(self.notebook, bd=0)
         self.settings_tab = tk.Frame(self.notebook, bd=0)
 
         self.notebook.add(self.chat_tab, text="Chatbot")
+        self.notebook.add(self.roast_tab, text="Roaster")
         self.notebook.add(self.games_tab, text="Games")
         self.notebook.add(self.settings_tab, text="Settings")
 
         self._build_chat_tab()
+        self._build_roast_tab()
         self._build_games_tab()
         self._build_settings_tab()
 
@@ -386,6 +389,64 @@ class ApertureLauncherGUI(tk.Tk):
             command=self.on_send_chat,
         )
         self.send_button.pack(side="right")
+
+    def _build_roast_tab(self) -> None:
+        self.roast_scroll = ScrollableFrame(self.roast_tab)
+        self.roast_scroll.pack(fill="both", expand=True, padx=12, pady=12)
+        self.roast_container = self.roast_scroll.inner
+
+        self.roast_header = tk.Label(
+            self.roast_container,
+            textvariable=self.persona_var,
+            font=("Segoe UI", 14, "bold"),
+            anchor="w",
+            pady=6,
+        )
+        self.roast_header.pack(fill="x", pady=(0, 6))
+
+        roast_description = (
+            "System announcements, persona introductions, and automatic roasts "
+            "are archived here so the main chatbot can focus on conversation."
+        )
+        self.roast_description = tk.Label(
+            self.roast_container,
+            text=roast_description,
+            font=("Segoe UI", 10),
+            anchor="w",
+            justify="left",
+            wraplength=620,
+            pady=4,
+        )
+        self.roast_description.pack(fill="x")
+
+        self.roast_text_frame = tk.Frame(self.roast_container, bd=0)
+        self.roast_text_frame.pack(fill="both", expand=True, pady=(6, 0))
+
+        self.roast_scrollbar = ttk.Scrollbar(self.roast_text_frame)
+        self.roast_scrollbar.pack(side="right", fill="y")
+
+        self.roast_display = tk.Text(
+            self.roast_text_frame,
+            wrap="word",
+            state="disabled",
+            yscrollcommand=self.roast_scrollbar.set,
+            font=("Segoe UI", 11),
+            relief="flat",
+            bd=0,
+        )
+        self.roast_display.pack(fill="both", expand=True)
+        self.roast_scrollbar.config(command=self.roast_display.yview)
+
+        self.roast_display.tag_configure("system", spacing1=2, spacing3=6)
+        self.roast_display.tag_configure(
+            "system_speaker",
+            font=("Segoe UI Semibold", 11),
+        )
+        self.roast_display.tag_configure("persona", spacing1=2, spacing3=6)
+        self.roast_display.tag_configure(
+            "persona_speaker",
+            font=("Segoe UI Semibold", 11),
+        )
 
     def _build_games_tab(self) -> None:
         self.games_scroll = ScrollableFrame(self.games_tab)
@@ -695,6 +756,7 @@ class ApertureLauncherGUI(tk.Tk):
         for widget in (
             self.header_frame,
             self.chat_tab,
+            self.roast_tab,
             self.games_tab,
             self.settings_tab,
         ):
@@ -704,6 +766,9 @@ class ApertureLauncherGUI(tk.Tk):
             self.chat_scroll,
             self.chat_scroll.canvas,
             self.chat_container,
+            self.roast_scroll,
+            self.roast_scroll.canvas,
+            self.roast_container,
             self.games_scroll,
             self.games_scroll.canvas,
             self.games_container,
@@ -715,6 +780,7 @@ class ApertureLauncherGUI(tk.Tk):
             self.chat_model_frame,
             self.react_frame,
             self.react_buttons_frame,
+            self.roast_text_frame,
             self.api_key_row,
             self.chat_text_frame,
             self.chat_input_frame,
@@ -733,7 +799,16 @@ class ApertureLauncherGUI(tk.Tk):
             bg=palette["surface"],
             fg=palette["accent_alt"],
         )
+        self.roast_header.configure(
+            bg=palette["surface"],
+            fg=palette["accent_alt"],
+        )
         self.chat_display.configure(
+            bg=palette["surface_highlight"],
+            fg=palette["text"],
+            insertbackground=palette["accent"],
+        )
+        self.roast_display.configure(
             bg=palette["surface_highlight"],
             fg=palette["text"],
             insertbackground=palette["accent"],
@@ -752,6 +827,16 @@ class ApertureLauncherGUI(tk.Tk):
         )
         self.chat_display.tag_configure("persona", foreground=palette["text"])
         self.chat_display.tag_configure(
+            "persona_speaker",
+            foreground=palette["accent_alt"],
+        )
+        self.roast_display.tag_configure("system", foreground=palette["text_muted"])
+        self.roast_display.tag_configure(
+            "system_speaker",
+            foreground=palette["accent"],
+        )
+        self.roast_display.tag_configure("persona", foreground=palette["text"])
+        self.roast_display.tag_configure(
             "persona_speaker",
             foreground=palette["accent_alt"],
         )
@@ -826,6 +911,7 @@ class ApertureLauncherGUI(tk.Tk):
             self.chat_model_label,
             self.react_label,
             self.chat_usage_label,
+            self.roast_description,
             self.model_label_settings,
             self.model_status_label,
             self.api_key_status_label,
@@ -991,20 +1077,41 @@ class ApertureLauncherGUI(tk.Tk):
             if len(self.chat_history) > 50:
                 self.chat_history.pop(0)
 
+    def append_roast(
+        self,
+        message: str,
+        speaker: str | None = None,
+        tag: str = "",
+    ) -> None:
+        """Insert a new line into the roast activity log."""
+
+        self.roast_display.configure(state="normal")
+        final_tag = tag or (
+            "persona" if speaker == self.current_persona.name else "system"
+        )
+        if speaker:
+            self.roast_display.insert(
+                "end",
+                f"{speaker}: ",
+                (f"{final_tag}_speaker",),
+            )
+        self.roast_display.insert("end", f"{message}\n", (final_tag,))
+        self.roast_display.configure(state="disabled")
+        self.roast_display.see("end")
+
     def _announce_welcome(self) -> None:
         welcome = (
             "Aperture Science Enrichment Centre System: Hello and welcome to the"
             " Aperture Science Enrichment Centre Game Launcher."
         )
-        self.append_chat(welcome, speaker="System", tag="system", log=True)
+        self.append_roast(welcome, speaker="System", tag="system")
         if self.ai_responses_enabled:
-            self.append_chat(
+            self.append_roast(
                 self.current_persona.intro,
                 speaker=self.current_persona.name,
                 tag="persona",
-                log=True,
             )
-            self.append_chat(
+            self.append_roast(
                 compose_os_roast(
                     self.current_persona,
                     allow_dynamic=self.use_dynamic_ai,
@@ -1012,7 +1119,6 @@ class ApertureLauncherGUI(tk.Tk):
                 ),
                 speaker=self.current_persona.name,
                 tag="persona",
-                log=True,
             )
 
     @property
@@ -1109,11 +1215,10 @@ class ApertureLauncherGUI(tk.Tk):
                     )
                     self.display_game_roasts(roasts)
                     for line in roasts:
-                        self.append_chat(
+                        self.append_roast(
                             line,
                             speaker=self.current_persona.name,
                             tag="persona",
-                            log=True,
                         )
                 else:
                     self.display_game_roasts(
@@ -1150,11 +1255,10 @@ class ApertureLauncherGUI(tk.Tk):
                     model=self.current_model,
                 )
                 self.display_game_roasts(roasts)
-                self.append_chat(
+                self.append_roast(
                     roasts[0],
                     speaker=self.current_persona.name,
                     tag="persona",
-                    log=True,
                 )
             else:
                 self.display_game_roasts(["Enable Static or Dynamic mode to receive roasts."])
@@ -1193,11 +1297,10 @@ class ApertureLauncherGUI(tk.Tk):
             self.display_game_roasts(["Select a game from the list first."])
             return
 
-        self.append_chat(
+        self.append_roast(
             "Requesting AI roast for the current selection.",
             speaker="System",
             tag="system",
-            log=True,
         )
         roasts = compose_game_roasts(
             self.current_persona,
@@ -1207,11 +1310,10 @@ class ApertureLauncherGUI(tk.Tk):
         )
         self.display_game_roasts(roasts)
         for line in roasts:
-            self.append_chat(
+            self.append_roast(
                 line,
                 speaker=self.current_persona.name,
                 tag="persona",
-                log=True,
             )
 
     def on_persona_selected(self, *_: object) -> None:
@@ -1222,20 +1324,18 @@ class ApertureLauncherGUI(tk.Tk):
 
         self.current_persona = persona
         self.persona_intro_label.configure(text=persona.intro)
-        self.append_chat(
+        self.append_roast(
             f"Persona switched to {persona.name}.",
             speaker="System",
             tag="system",
-            log=True,
         )
         if self.ai_responses_enabled:
-            self.append_chat(
+            self.append_roast(
                 persona.intro,
                 speaker=persona.name,
                 tag="persona",
-                log=True,
             )
-            self.append_chat(
+            self.append_roast(
                 compose_os_roast(
                     persona,
                     allow_dynamic=self.use_dynamic_ai,
@@ -1243,7 +1343,6 @@ class ApertureLauncherGUI(tk.Tk):
                 ),
                 speaker=persona.name,
                 tag="persona",
-                log=True,
             )
         self.persona_var.set(persona.name)
 
@@ -1265,26 +1364,23 @@ class ApertureLauncherGUI(tk.Tk):
         else:
             self.status_var.set("AI mode set to Static.")
         if mode == AI_MODE_NONE and previous_mode != AI_MODE_NONE:
-            self.append_chat(
+            self.append_roast(
                 "AI responses muted. Manual interaction only.",
                 speaker="System",
                 tag="system",
-                log=True,
             )
         if mode != AI_MODE_NONE and previous_mode == AI_MODE_NONE:
-            self.append_chat(
+            self.append_roast(
                 "AI responses re-enabled. Persona coming back online.",
                 speaker="System",
                 tag="system",
-                log=True,
             )
-            self.append_chat(
+            self.append_roast(
                 self.current_persona.intro,
                 speaker=self.current_persona.name,
                 tag="persona",
-                log=True,
             )
-            self.append_chat(
+            self.append_roast(
                 compose_os_roast(
                     self.current_persona,
                     allow_dynamic=self.use_dynamic_ai,
@@ -1292,7 +1388,6 @@ class ApertureLauncherGUI(tk.Tk):
                 ),
                 speaker=self.current_persona.name,
                 tag="persona",
-                log=True,
             )
         self._last_ai_mode = mode
 
