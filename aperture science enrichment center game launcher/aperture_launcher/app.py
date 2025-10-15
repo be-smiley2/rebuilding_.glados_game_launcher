@@ -20,6 +20,7 @@ from .constants import (
     CHAT_SPEAKER_COLORS,
     GENERAL_CHAT_MODELS,
     GENERAL_CHAT_PERSONAS,
+    ROASTING_CHAT_MODELS,
     ROASTING_PERSONAS,
     THEME_PALETTES,
     JELLYFIN_API_KEY_ENV,
@@ -57,6 +58,7 @@ class ApertureLauncherGUI(tk.Tk):
         self.media_status_var = tk.StringVar(value="Provide Jellyfin details to connect.")
         self.api_key_var = tk.StringVar(value=os.environ.get(OPENROUTER_API_KEY_ENV, ""))
         self.general_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
+        self.roasting_model_var = tk.StringVar(value=ROASTING_CHAT_MODELS[0])
         self.general_persona_var = tk.StringVar(value=list(GENERAL_CHAT_PERSONAS.keys())[0])
         self.roasting_voice_var = tk.StringVar(value=list(ROASTING_PERSONAS.keys())[0])
         self.roasting_game_var = tk.StringVar(value="")
@@ -94,6 +96,7 @@ class ApertureLauncherGUI(tk.Tk):
         self._apply_theme()
 
         self.api_key_var.trace_add("write", self._invalidate_api_key)
+        self.roasting_game_var.trace_add("write", self._on_roasting_game_change)
         if self._auto_apply_api_key:
             self.general_status_var.set("Validating API key from environment...")
             self.after(200, self.apply_api_key)
@@ -147,57 +150,21 @@ class ApertureLauncherGUI(tk.Tk):
     def _build_launcher_tab(self, parent: ttk.Frame) -> None:
         """Construct the classic launcher interface inside its tab."""
 
-        controls = ttk.Frame(parent)
-        controls.pack(fill="x", padx=24, pady=(24, 0))
+        container = ttk.Frame(parent)
+        container.pack(fill="both", expand=True, padx=24, pady=24)
 
-        self.scan_button = ttk.Button(controls, text="Scan for Games", command=self.scan_for_games)
-        self.scan_button.pack(side="left")
-
-        self.launch_button = ttk.Button(
-            controls,
-            text="Launch Selected",
-            command=self.launch_selected_game,
-            state="disabled",
+        message = (
+            "Steam game scanning and launching now live in the Roasting Chamber. "
+            "Visit that tab to scan your libraries, pick a title for roasting context, "
+            "and optionally double-click to launch it."
         )
-        self.launch_button.pack(side="left", padx=(12, 0))
+        ttk.Label(container, text=message, wraplength=520, justify="left").pack(anchor="center", pady=(0, 12))
 
-        content = ttk.Frame(parent)
-        content.pack(fill="both", expand=True, padx=24, pady=(12, 12))
-
-        self.tree = ttk.Treeview(
-            content,
-            columns=("name", "appid", "location"),
-            show="headings",
-            selectmode="browse",
-        )
-        self.tree.heading("name", text="Game")
-        self.tree.heading("appid", text="App ID")
-        self.tree.heading("location", text="Install Location")
-        self.tree.column("name", width=260, anchor="w")
-        self.tree.column("appid", width=80, anchor="center")
-        self.tree.column("location", anchor="w")
-
-        scrollbar = ttk.Scrollbar(content, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscroll=scrollbar.set)
-
-        self.tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-
-        self.tree.bind("<Double-Button-1>", lambda event: self.launch_selected_game())
-        self.tree.bind("<<TreeviewSelect>>", lambda event: self._update_launch_button_state())
-
-        status_bar = ttk.Frame(parent)
-        status_bar.pack(fill="x", padx=24, pady=(0, 24))
-
-        self.status_label = ttk.Label(status_bar, textvariable=self.status_var)
-        self.status_label.pack(side="left")
-
-        hint = ttk.Label(
-            status_bar,
-            text="Double-click a game to launch it once a scan has completed.",
-            style="Hint.TLabel",
-        )
-        hint.pack(side="right")
+        ttk.Button(
+            container,
+            text="Open Roasting Chamber",
+            command=lambda: self.notebook.select(self.roasting_chat_tab),
+        ).pack()
 
     def _build_general_chat_tab(self, parent: ttk.Frame) -> None:
         """Create the general-purpose chatbot interface."""
@@ -393,8 +360,34 @@ class ApertureLauncherGUI(tk.Tk):
     def _build_roasting_chat_tab(self, parent: ttk.Frame) -> None:
         """Create the roasting chatbot interface with persona switching."""
 
+        config = ttk.LabelFrame(parent, text="OpenRouter Configuration")
+        config.pack(fill="x", padx=24, pady=(24, 12))
+        config.columnconfigure(1, weight=1)
+
+        ttk.Label(config, text="API Key:").grid(row=0, column=0, sticky="w")
+        self.roasting_api_entry = ttk.Entry(
+            config,
+            textvariable=self.api_key_var,
+            show="*",
+            width=52,
+        )
+        self.roasting_api_entry.grid(row=0, column=1, sticky="ew")
+
+        self.roasting_api_apply_button = ttk.Button(
+            config,
+            text="Validate Key",
+            command=self.apply_api_key,
+        )
+        self.roasting_api_apply_button.grid(row=0, column=2, padx=(12, 0))
+
+        ttk.Label(
+            config,
+            text="Provide a valid OpenRouter key to unlock AI-generated roasts.",
+            wraplength=520,
+        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
         settings = ttk.Frame(parent)
-        settings.pack(fill="x", padx=24, pady=(24, 12))
+        settings.pack(fill="x", padx=24, pady=(0, 12))
 
         ttk.Label(settings, text="Persona:").pack(side="left")
         persona_menu = ttk.OptionMenu(
@@ -406,10 +399,27 @@ class ApertureLauncherGUI(tk.Tk):
         )
         persona_menu.pack(side="left", padx=(6, 12))
 
+        ttk.Label(settings, text="Model:").pack(side="left")
+        self.roasting_model_combo = ttk.Combobox(
+            settings,
+            textvariable=self.roasting_model_var,
+            values=ROASTING_CHAT_MODELS,
+            state="readonly",
+            width=48,
+        )
+        self.roasting_model_combo.pack(side="left", padx=(6, 12))
+
+        self.roasting_clear_button = ttk.Button(
+            settings,
+            text="Clear Persona History",
+            command=self.clear_roasting_conversation,
+        )
+        self.roasting_clear_button.pack(side="right")
+
         context = ttk.Frame(parent)
         context.pack(fill="x", padx=24, pady=(0, 12))
 
-        ttk.Label(context, text="Game:").pack(side="left")
+        ttk.Label(context, text="Roast Focus:").pack(side="left")
         self.roasting_game_combo = ttk.Combobox(
             context,
             textvariable=self.roasting_game_var,
@@ -433,12 +443,56 @@ class ApertureLauncherGUI(tk.Tk):
         )
         os_check.pack(side="left", padx=(18, 0))
 
-        self.roasting_clear_button = ttk.Button(
-            settings,
-            text="Clear Persona History",
-            command=self.clear_roasting_conversation,
+        games_panel = ttk.LabelFrame(parent, text="Steam Library")
+        games_panel.pack(fill="x", padx=24, pady=(0, 12))
+
+        controls = ttk.Frame(games_panel)
+        controls.pack(fill="x", pady=(0, 6))
+
+        self.scan_button = ttk.Button(controls, text="Scan Libraries", command=self.scan_for_games)
+        self.scan_button.pack(side="left")
+
+        self.launch_button = ttk.Button(
+            controls,
+            text="Launch Selected",
+            command=self.launch_selected_game,
+            state="disabled",
         )
-        self.roasting_clear_button.pack(side="right")
+        self.launch_button.pack(side="left", padx=(12, 0))
+
+        ttk.Label(controls, textvariable=self.status_var).pack(side="right")
+
+        tree_frame = ttk.Frame(games_panel)
+        tree_frame.pack(fill="x")
+
+        self.tree = ttk.Treeview(
+            tree_frame,
+            columns=("name", "appid", "location"),
+            show="headings",
+            selectmode="browse",
+            height=6,
+        )
+        self.tree.heading("name", text="Game")
+        self.tree.heading("appid", text="App ID")
+        self.tree.heading("location", text="Install Location")
+        self.tree.column("name", width=260, anchor="w")
+        self.tree.column("appid", width=80, anchor="center")
+        self.tree.column("location", anchor="w")
+
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscroll=scrollbar.set)
+
+        self.tree.pack(side="left", fill="x", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        self.tree.bind("<Double-Button-1>", lambda event: self.launch_selected_game())
+        self.tree.bind("<<TreeviewSelect>>", lambda event: self._update_launch_button_state())
+
+        ttk.Label(
+            games_panel,
+            text="Select a game to use as roast context. Double-click to launch via Steam.",
+            style="Hint.TLabel",
+        ).pack(fill="x", pady=(6, 0))
 
         status_bar = ttk.Frame(parent)
         status_bar.pack(fill="x", padx=24, pady=(6, 6))
@@ -647,6 +701,8 @@ class ApertureLauncherGUI(tk.Tk):
         self.general_send_button.configure(state=state)
         self.general_clear_button.configure(state=state)
         self.api_key_apply_button.configure(state=state)
+        if hasattr(self, "roasting_api_apply_button"):
+            self.roasting_api_apply_button.configure(state=state)
 
         if status is None:
             persona = self.general_persona_var.get()
@@ -853,23 +909,29 @@ class ApertureLauncherGUI(tk.Tk):
             self._validated_api_key = ""
             if not self.general_busy:
                 self.general_status_var.set("API key changed. Click Apply Key to validate.")
+            if not self.roasting_busy:
+                self.roasting_status_var.set(
+                    "API key changed. Validate it to enable OpenRouter roasts."
+                )
 
     def apply_api_key(self) -> None:
         """Validate the entered OpenRouter key before allowing chat usage."""
 
         if self.general_busy:
             messagebox.showinfo(
-                "General Chat",
-                "Please wait for the current operation to finish before applying a new key.",
+                "OpenRouter",
+                "Please wait for the current OpenRouter request to finish before applying a new key.",
             )
             return
 
         api_key = self.api_key_var.get().strip()
         if not api_key:
-            messagebox.showerror("General Chat", "Enter an OpenRouter API key before applying.")
+            messagebox.showerror("OpenRouter", "Enter an OpenRouter API key before applying.")
             return
 
         self._set_general_busy(True, "Validating API key with OpenRouter...")
+        if not self.roasting_busy:
+            self.roasting_status_var.set("Validating OpenRouter API key...")
 
         def on_complete(error: Exception | None) -> None:
             if error:
@@ -877,15 +939,22 @@ class ApertureLauncherGUI(tk.Tk):
                 self._validated_api_key = ""
                 self._set_general_busy(False, "API key validation failed. See details above.")
                 messagebox.showerror(
-                    "General Chat",
+                    "OpenRouter",
                     "Could not validate the OpenRouter key. Please verify the key and try again.\n\n"
                     f"Details: {error}",
                 )
+                if not self.roasting_busy:
+                    self.roasting_status_var.set("API key validation failed. See error dialog.")
                 return
 
             self.api_key_valid = True
             self._validated_api_key = api_key
             self._set_general_busy(False, "API key validated. Ready to chat.")
+            if not self.roasting_busy:
+                persona = self.roasting_voice_var.get()
+                self.roasting_status_var.set(
+                    f"OpenRouter ready. {persona} can now deliver AI-powered roasts."
+                )
 
         verify_api_key(api_key, on_complete, scheduler=self.after)
 
@@ -902,11 +971,44 @@ class ApertureLauncherGUI(tk.Tk):
             status = "Synthesizing a roast..." if busy else f"{persona} ready to roast."
         self.roasting_status_var.set(status)
 
+    def _on_roasting_game_change(self, *_: object) -> None:
+        """Synchronize the game tree with the roast focus selection."""
+
+        if not hasattr(self, "tree"):
+            return
+
+        name = self.roasting_game_var.get().strip()
+        if not name:
+            # Clear selection when the roast focus is cleared manually.
+            selection = self.tree.selection()
+            if selection:
+                self.tree.selection_remove(*selection)
+            if hasattr(self, "launch_button"):
+                self.launch_button.configure(state="disabled")
+            return
+
+        for game in self.games:
+            if game.name == name and self.tree.exists(game.app_id):
+                self.tree.selection_set(game.app_id)
+                self.tree.focus(game.app_id)
+                self.tree.see(game.app_id)
+                if hasattr(self, "launch_button"):
+                    self.launch_button.configure(state="normal")
+                break
+
     def _update_launch_button_state(self) -> None:
         """Enable or disable the launch button based on selection."""
 
-        if self.tree.selection():
+        if not hasattr(self, "tree"):
+            return
+
+        selection = self.tree.selection()
+        if selection:
             self.launch_button.configure(state="normal")
+            app_id = selection[0]
+            game = next((game for game in self.games if game.app_id == app_id), None)
+            if game:
+                self.roasting_game_var.set(game.name)
         else:
             self.launch_button.configure(state="disabled")
 
@@ -1196,7 +1298,14 @@ class ApertureLauncherGUI(tk.Tk):
 
         if self._uses_openrouter_for_roasts():
             payload = self._prepare_roasting_payload(history, contextual_prompt)
-            model = self.general_model_var.get()
+            model = self.roasting_model_var.get().strip()
+            if not model:
+                self._set_roasting_busy(False, "Select an OpenRouter model to continue.")
+                messagebox.showerror(
+                    "Roasting Chamber",
+                    "Choose an OpenRouter model before requesting an online roast.",
+                )
+                return
             self._pending_roasting_persona = persona
             self.roasting_status_var.set(f"{persona} is consulting OpenRouter for a roast...")
             request_chat_completion(

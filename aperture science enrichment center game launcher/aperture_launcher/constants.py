@@ -84,6 +84,9 @@ GENERAL_CHAT_MODELS: List[str] = [
 ]
 
 
+ROASTING_CHAT_MODELS: List[str] = GENERAL_CHAT_MODELS.copy()
+
+
 GENERAL_CHAT_PERSONAS: Dict[str, str] = {
     "GLaDOS": (
         "You are GLaDOS, Aperture Science's sardonic overseer. Provide useful, technically precise help "
