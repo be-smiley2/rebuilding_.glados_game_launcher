@@ -10,14 +10,6 @@ import subprocess
 import sys
 from typing import Sequence
 
-from ai_personas import (
-    DEFAULT_PERSONA_KEY,
-    PERSONAS,
-    Persona,
-    persona_say,
-    roast_games,
-    roast_os,
-)
 from ansi_colors import APERTURE_SYSTEM, SYSTEM_ALERT, SYSTEM_PRIMARY, SYSTEM_SUCCESS
 from steam_scanner import (
     SteamGame,
@@ -88,57 +80,62 @@ def prompt_for_launch(games: Sequence[SteamGame]) -> None:
         break
 
 
-def command_loop() -> None:
-    """Main interactive loop supporting persona switching and roasting."""
+def perform_scan() -> list[SteamGame]:
+    """Discover Steam games and print the results to the console."""
 
-    current: Persona = PERSONAS[DEFAULT_PERSONA_KEY]
+    libraries = discover_steam_libraries()
+    games = find_installed_games(libraries)
+    print_game_report(games)
+    return list(games)
+
+
+def command_loop() -> None:
+    """Main interactive loop for scanning libraries and launching games."""
+
     announce_system_welcome()
-    persona_say(current, current.intro)
-    roast_os(current)
+    print(
+        f"{SYSTEM_PRIMARY}Type 'scan' to search for games, 'launch' to pick from the last scan,"
+        " or 'exit' to quit."
+    )
+
+    cached_games: list[SteamGame] = []
 
     while True:
-        prompt = (
-            "\nCommands: scan | games, system, glados, cs, kf, barry, flash, claptrap, help, or exit.\n"
-            f"{current.name} awaits your input: "
-        )
-        command = input(prompt).strip().lower()
+        command = input(f"{SYSTEM_PRIMARY}Command (scan/help/launch/exit): ").strip().lower()
 
         if command in {"exit", "quit"}:
-            persona_say(current, "Shutting down observation. Try not to break anything.")
+            print(f"{SYSTEM_SUCCESS}Shutting down. See you next test cycle.")
             break
 
         if command in {"help", "?"}:
-            persona_say(
-                current,
-                "Type 'scan' to look for games, or switch personalities with"
-                " 'system', 'glados', 'cs', 'kf', 'barry', 'flash', or 'claptrap'.",
+            print(
+                f"{SYSTEM_PRIMARY}Available commands:\n"
+                "  scan   - Search Steam libraries for installed games.\n"
+                "  launch - Choose a game from the most recent scan to launch.\n"
+                "  help   - Display this message.\n"
+                "  exit   - Quit the launcher."
             )
             continue
 
-        if command in PERSONAS:
-            next_persona = PERSONAS[command]
-            if next_persona is current:
-                persona_say(current, "Still here. Your short-term memory needs calibration.")
-            else:
-                current = next_persona
-                persona_say(current, f"Switched persona to {current.name}.")
-                persona_say(current, current.intro)
-                roast_os(current)
+        if command == "scan":
+            cached_games = perform_scan()
             continue
 
-        if command in {"check for games", "scan", "games"}:
-            libraries = discover_steam_libraries()
-            games = find_installed_games(libraries)
-            print_game_report(games)
-            roast_games(current, games)
-            prompt_for_launch(games)
+        if command == "launch":
+            if not cached_games:
+                print(
+                    f"{SYSTEM_ALERT}No games are cached yet. Run a scan before launching anything."
+                )
+                continue
+            prompt_for_launch(cached_games)
             continue
 
-        persona_say(
-            current,
-            "Unrecognized input. Either run a scan or pick a persona before the"
-            " boredom sets in.",
-        )
+        if command in {"games"}:
+            cached_games = perform_scan()
+            prompt_for_launch(cached_games)
+            continue
+
+        print(f"{SYSTEM_ALERT}Unrecognized command. Type 'help' for assistance.")
 
 
 def main() -> None:
