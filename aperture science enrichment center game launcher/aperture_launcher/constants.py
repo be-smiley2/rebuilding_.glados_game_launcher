@@ -15,6 +15,7 @@ THEME_PALETTES: Dict[str, Dict[str, str]] = {
         "text_muted": "#aeb7c4",
         "accent": "#f7a11b",
         "accent_hover": "#ffb54a",
+        "text_on_accent": "#101417",
     },
     "light": {
         "background": "#edf1f4",
@@ -25,6 +26,7 @@ THEME_PALETTES: Dict[str, Dict[str, str]] = {
         "text_muted": "#5b6978",
         "accent": "#f48f00",
         "accent_hover": "#ffae33",
+        "text_on_accent": "#ffffff",
     },
 }
 
@@ -265,3 +267,5 @@ JELLYFIN_API_KEY_ENV = "JELLYFIN_API_KEY"
 JELLYFIN_USER_ID_ENV = "JELLYFIN_USER_ID"
 JELLYFIN_DEFAULT_TIMEOUT = 20.0
 JELLYFIN_RECENT_LIMIT = 12
+JELLYFIN_WEB_UI_URL_ENV = "JELLYFIN_WEB_UI_URL"
+JELLYFIN_WEB_UI_URL = "https://smiley.citadel.usbx.me/jellyfin/web/#/home.html"

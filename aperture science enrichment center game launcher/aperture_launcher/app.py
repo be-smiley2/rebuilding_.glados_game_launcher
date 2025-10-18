@@ -2,13 +2,50 @@
 
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 import platform
+import queue
 import random
-import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
-from typing import Callable, Dict, List, Sequence
+from typing import Dict, List, Sequence
+
+import webbrowser
+
+try:  # pragma: no cover - optional dependency
+    import webview  # type: ignore[import]
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    webview = None
+
+
+def _run_jellyfin_webview(url: str, width: int, height: int, status_queue: mp.Queue) -> None:
+    """Create and manage a pywebview window in a standalone process."""
+
+    if webview is None:
+        try:
+            status_queue.put_nowait(
+                ("error", "Install the 'pywebview' package to enable the embedded Jellyfin portal.")
+            )
+        finally:
+            status_queue.close()
+        return
+
+    try:
+        webview.create_window(
+            "Jellyfin Web UI",
+            url,
+            width=width,
+            height=height,
+            resizable=True,
+        )
+        status_queue.put_nowait(("started", "Embedded Jellyfin portal running."))
+        webview.start()
+        status_queue.put_nowait(("closed", "Embedded Jellyfin portal closed."))
+    except Exception as exc:  # pragma: no cover - platform dependent
+        status_queue.put_nowait(("error", str(exc)))
+    finally:
+        status_queue.close()
 
 from steam_scanner import (
     SteamGame,
@@ -22,12 +59,10 @@ from .constants import (
     GENERAL_CHAT_PERSONAS,
     ROASTING_PERSONAS,
     THEME_PALETTES,
-    JELLYFIN_API_KEY_ENV,
-    JELLYFIN_SERVER_URL_ENV,
-    JELLYFIN_USER_ID_ENV,
+    JELLYFIN_WEB_UI_URL,
+    JELLYFIN_WEB_UI_URL_ENV,
     OPENROUTER_API_KEY_ENV,
 )
-from .jellyfin import fetch_recent_media, fetch_system_info, fetch_user_views
 from .openrouter import request_chat_completion, verify_api_key
 from .roasting import generate_roast
 from .steam_launcher import launch_game
@@ -56,7 +91,6 @@ class ApertureLauncherGUI(tk.Tk):
         self.roasting_status_var = tk.StringVar(
             value="Select a persona, choose an OpenRouter model, and optionally pick a Steam game."
         )
-        self.media_status_var = tk.StringVar(value="Provide Jellyfin details to connect.")
         self.api_key_var = tk.StringVar(value=os.environ.get(OPENROUTER_API_KEY_ENV, ""))
         self.general_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
         self.roasting_model_var = tk.StringVar(value=GENERAL_CHAT_MODELS[0])
@@ -64,9 +98,16 @@ class ApertureLauncherGUI(tk.Tk):
         self.roasting_voice_var = tk.StringVar(value=list(ROASTING_PERSONAS.keys())[0])
         self.roasting_game_var = tk.StringVar(value="")
         self.include_os_var = tk.BooleanVar(value=True)
-        self.jellyfin_server_var = tk.StringVar(value=os.environ.get(JELLYFIN_SERVER_URL_ENV, ""))
-        self.jellyfin_api_key_var = tk.StringVar(value=os.environ.get(JELLYFIN_API_KEY_ENV, ""))
-        self.jellyfin_user_id_var = tk.StringVar(value=os.environ.get(JELLYFIN_USER_ID_ENV, ""))
+        self.jellyfin_web_url_var = tk.StringVar(
+            value=os.environ.get(JELLYFIN_WEB_UI_URL_ENV, JELLYFIN_WEB_UI_URL)
+        )
+        self.jellyfin_web_status_var = tk.StringVar(
+            value=(
+                "Launch the embedded Jellyfin portal or open it in your browser."
+                if webview
+                else "Open the Jellyfin portal in your browser. Install pywebview for an embedded view."
+            )
+        )
 
         self.games: List[SteamGame] = []
         self._text_widgets: List[tk.Text] = []
@@ -90,8 +131,8 @@ class ApertureLauncherGUI(tk.Tk):
         self._pending_roasting_persona: str | None = None
         self._last_roasting_prompt = ""
 
-        self.jellyfin_busy = False
-        self.media_action_buttons: List[ttk.Button] = []
+        self._jellyfin_webview_process: mp.Process | None = None
+        self._jellyfin_webview_queue: mp.Queue | None = None
 
         self._build_ui()
         self._apply_theme()
@@ -134,17 +175,17 @@ class ApertureLauncherGUI(tk.Tk):
 
         self.launcher_tab = ttk.Frame(self.notebook)
         self.general_chat_tab = ttk.Frame(self.notebook)
-        self.media_server_tab = ttk.Frame(self.notebook)
+        self.jellyfin_web_tab = ttk.Frame(self.notebook)
         self.roasting_chat_tab = ttk.Frame(self.notebook)
 
         self.notebook.add(self.launcher_tab, text="Launcher")
         self.notebook.add(self.general_chat_tab, text="General Chat")
-        self.notebook.add(self.media_server_tab, text="Media Server")
+        self.notebook.add(self.jellyfin_web_tab, text="Jellyfin Web")
         self.notebook.add(self.roasting_chat_tab, text="Roasting Chamber")
 
         self._build_launcher_tab(self.launcher_tab)
         self._build_general_chat_tab(self.general_chat_tab)
-        self._build_media_tab(self.media_server_tab)
+        self._build_jellyfin_web_tab(self.jellyfin_web_tab)
         self._build_roasting_chat_tab(self.roasting_chat_tab)
 
     def _build_launcher_tab(self, parent: ttk.Frame) -> None:
@@ -205,89 +246,60 @@ class ApertureLauncherGUI(tk.Tk):
     def _build_general_chat_tab(self, parent: ttk.Frame) -> None:
         """Create the general-purpose chatbot interface."""
 
-        config = ttk.LabelFrame(parent, text="OpenRouter Configuration")
-        config.pack(fill="x", padx=24, pady=(24, 12))
-        config.columnconfigure(1, weight=1)
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
 
-        ttk.Label(config, text="API Key:").grid(row=0, column=0, sticky="w")
-        self.api_key_entry = ttk.Entry(config, textvariable=self.api_key_var, show="*", width=52)
-        self.api_key_entry.grid(row=0, column=1, sticky="ew")
+        layout = ttk.Frame(parent)
+        layout.grid(row=0, column=0, sticky="nsew", padx=24, pady=24)
+        layout.columnconfigure(0, weight=3)
+        layout.columnconfigure(1, weight=2)
+        layout.rowconfigure(0, weight=1)
 
-        self.api_key_apply_button = ttk.Button(
-            config,
-            text="Apply Key",
-            command=self.apply_api_key,
-        )
-        self.api_key_apply_button.grid(row=0, column=2, padx=(12, 0))
+        conversation = ttk.Frame(layout)
+        conversation.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        conversation.columnconfigure(0, weight=1)
+        conversation.rowconfigure(1, weight=1)
 
-        ttk.Label(
-            config,
-            text=(
-                "Enter your OpenRouter API key (required for OpenRouter chat and roasts). "
-                "The key stays only in memory for this session."
-            ),
-            wraplength=520,
-        ).grid(row=1, column=0, columnspan=2, sticky="w", pady=(6, 0))
+        status_bar = ttk.Frame(conversation)
+        status_bar.grid(row=0, column=0, sticky="ew")
+        status_bar.columnconfigure(0, weight=1)
 
-        options = ttk.Frame(parent)
-        options.pack(fill="x", padx=24)
-
-        ttk.Label(options, text="Persona:").pack(side="left")
-        persona_menu = ttk.OptionMenu(
-            options,
-            self.general_persona_var,
-            self.general_persona_var.get(),
-            *GENERAL_CHAT_PERSONAS.keys(),
-            command=lambda value: self._load_general_history(value),
-        )
-        persona_menu.pack(side="left", padx=(6, 18))
-
-        ttk.Label(options, text="Model:").pack(side="left")
-        self.general_model_combo = ttk.Combobox(
-            options,
-            textvariable=self.general_model_var,
-            values=GENERAL_CHAT_MODELS,
-            state="readonly",
-            width=48,
-        )
-        self.general_model_combo.pack(side="left", padx=(6, 12))
+        self.general_status_label = ttk.Label(status_bar, textvariable=self.general_status_var)
+        self.general_status_label.grid(row=0, column=0, sticky="w")
 
         self.general_clear_button = ttk.Button(
-            options,
+            status_bar,
             text="Clear Conversation",
             command=self.clear_general_conversation,
         )
-        self.general_clear_button.pack(side="right")
+        self.general_clear_button.grid(row=0, column=1, sticky="e")
 
-        status_bar = ttk.Frame(parent)
-        status_bar.pack(fill="x", padx=24, pady=(6, 6))
-        self.general_status_label = ttk.Label(status_bar, textvariable=self.general_status_var)
-        self.general_status_label.pack(side="left")
-
-        chat_frame = ttk.Frame(parent)
-        chat_frame.pack(fill="both", expand=True, padx=24, pady=(6, 6))
+        transcript = ttk.Frame(conversation)
+        transcript.grid(row=1, column=0, sticky="nsew", pady=(12, 12))
+        transcript.columnconfigure(0, weight=1)
+        transcript.rowconfigure(0, weight=1)
 
         self.general_display = tk.Text(
-            chat_frame,
+            transcript,
             wrap="word",
             state="disabled",
-            height=16,
+            height=18,
             relief="flat",
             bd=0,
         )
         self._text_widgets.append(self.general_display)
+        self.general_display.grid(row=0, column=0, sticky="nsew")
 
-        general_scrollbar = ttk.Scrollbar(chat_frame, orient="vertical", command=self.general_display.yview)
+        general_scrollbar = ttk.Scrollbar(transcript, orient="vertical", command=self.general_display.yview)
+        general_scrollbar.grid(row=0, column=1, sticky="ns")
         self.general_display.configure(yscrollcommand=general_scrollbar.set)
 
-        self.general_display.pack(side="left", fill="both", expand=True)
-        general_scrollbar.pack(side="right", fill="y")
-
-        input_frame = ttk.Frame(parent)
-        input_frame.pack(fill="x", padx=24, pady=(6, 24))
+        input_frame = ttk.Frame(conversation)
+        input_frame.grid(row=2, column=0, sticky="ew")
+        input_frame.columnconfigure(0, weight=1)
 
         self.general_input = tk.Text(input_frame, wrap="word", height=4)
-        self.general_input.pack(side="left", fill="both", expand=True)
+        self.general_input.grid(row=0, column=0, sticky="ew")
         self._text_widgets.append(self.general_input)
 
         self.general_send_button = ttk.Button(
@@ -295,228 +307,200 @@ class ApertureLauncherGUI(tk.Tk):
             text="Send",
             command=self.send_general_message,
         )
-        self.general_send_button.pack(side="left", padx=(12, 0))
+        self.general_send_button.grid(row=0, column=1, padx=(12, 0))
+
+        sidebar = ttk.LabelFrame(layout, text="Conversation Setup")
+        sidebar.grid(row=0, column=1, sticky="nsew")
+        sidebar.columnconfigure(1, weight=1)
+
+        row = 0
+        ttk.Label(sidebar, text="API Key:").grid(row=row, column=0, sticky="w")
+        self.api_key_entry = ttk.Entry(sidebar, textvariable=self.api_key_var, show="*", width=28)
+        self.api_key_entry.grid(row=row, column=1, sticky="ew")
+        self.api_key_apply_button = ttk.Button(
+            sidebar,
+            text="Apply Key",
+            command=self.apply_api_key,
+        )
+        self.api_key_apply_button.grid(row=row, column=2, padx=(12, 0))
+        row += 1
+
+        ttk.Label(
+            sidebar,
+            text=(
+                "Enter your OpenRouter API key to enable cloud conversation features. "
+                "The key remains in memory only for this session."
+            ),
+            wraplength=320,
+        ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(6, 12))
+        row += 1
+
+        ttk.Label(sidebar, text="Persona:").grid(row=row, column=0, sticky="w")
+        persona_menu = ttk.OptionMenu(
+            sidebar,
+            self.general_persona_var,
+            self.general_persona_var.get(),
+            *GENERAL_CHAT_PERSONAS.keys(),
+            command=lambda value: self._load_general_history(value),
+        )
+        persona_menu.grid(row=row, column=1, columnspan=2, sticky="ew", pady=(0, 6))
+        row += 1
+
+        ttk.Label(sidebar, text="Model:").grid(row=row, column=0, sticky="w")
+        self.general_model_combo = ttk.Combobox(
+            sidebar,
+            textvariable=self.general_model_var,
+            values=GENERAL_CHAT_MODELS,
+            state="readonly",
+        )
+        self.general_model_combo.grid(row=row, column=1, columnspan=2, sticky="ew")
+        row += 1
+
+        sidebar.rowconfigure(row, weight=1)
 
         self._load_general_history(self.general_persona_var.get())
 
-    def _build_media_tab(self, parent: ttk.Frame) -> None:
-        """Construct the Jellyfin media server interface."""
+    def _build_jellyfin_web_tab(self, parent: ttk.Frame) -> None:
+        """Provide shortcuts for loading the Jellyfin web interface."""
 
-        config = ttk.LabelFrame(parent, text="Jellyfin Connection")
-        config.pack(fill="x", padx=24, pady=(24, 12))
-        config.columnconfigure(1, weight=1)
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(1, weight=1)
 
-        ttk.Label(config, text="Server URL:").grid(row=0, column=0, sticky="w")
-        self.jellyfin_server_entry = ttk.Entry(
-            config,
-            textvariable=self.jellyfin_server_var,
-            width=52,
+        header = ttk.Frame(parent)
+        header.grid(row=0, column=0, sticky="ew", padx=24, pady=(24, 12))
+        header.columnconfigure(0, weight=1)
+
+        ttk.Label(header, textvariable=self.jellyfin_web_status_var).grid(row=0, column=0, sticky="w")
+
+        actions = ttk.Frame(header)
+        actions.grid(row=0, column=1, sticky="e")
+
+        if webview is not None:
+            ttk.Button(actions, text="Open Embedded View", command=self._launch_embedded_jellyfin).pack(
+                side="left"
+            )
+        ttk.Button(actions, text="Open in Browser", command=self._open_jellyfin_in_browser).pack(
+            side="left", padx=(12, 0)
         )
-        self.jellyfin_server_entry.grid(row=0, column=1, sticky="ew")
 
-        ttk.Label(config, text="API Key:").grid(row=1, column=0, sticky="w", pady=(6, 0))
-        self.jellyfin_api_key_entry = ttk.Entry(
-            config,
-            textvariable=self.jellyfin_api_key_var,
-            show="*",
-            width=52,
-        )
-        self.jellyfin_api_key_entry.grid(row=1, column=1, sticky="ew", pady=(6, 0))
-
-        ttk.Label(config, text="User ID:").grid(row=2, column=0, sticky="w", pady=(6, 0))
-        self.jellyfin_user_id_entry = ttk.Entry(
-            config,
-            textvariable=self.jellyfin_user_id_var,
-            width=52,
-        )
-        self.jellyfin_user_id_entry.grid(row=2, column=1, sticky="ew", pady=(6, 0))
+        info = ttk.LabelFrame(parent, text="Jellyfin Portal")
+        info.grid(row=1, column=0, sticky="nsew", padx=24, pady=(0, 24))
+        info.columnconfigure(0, weight=1)
 
         ttk.Label(
-            config,
+            info,
             text=(
-                "Values can be pre-filled via the environment variables "
-                f"{JELLYFIN_SERVER_URL_ENV}, {JELLYFIN_API_KEY_ENV}, and {JELLYFIN_USER_ID_ENV}."
+                "Use the embedded view for a browser-like experience without leaving the launcher. "
+                "The embedded mode relies on the optional 'pywebview' package; install it to enable the feature."
             ),
             wraplength=520,
-        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ).grid(row=0, column=0, sticky="w")
 
-        actions = ttk.Frame(parent)
-        actions.pack(fill="x", padx=24)
+        url_frame = ttk.Frame(info)
+        url_frame.grid(row=1, column=0, sticky="ew", pady=(12, 0))
+        url_frame.columnconfigure(0, weight=1)
 
-        self.media_action_buttons: List[ttk.Button] = []
+        ttk.Label(url_frame, text="Portal URL:").grid(row=0, column=0, sticky="w")
 
-        test_button = ttk.Button(actions, text="Test Connection", command=self.test_jellyfin_connection)
-        test_button.pack(side="left")
-        self.media_action_buttons.append(test_button)
-
-        libraries_button = ttk.Button(
-            actions,
-            text="Fetch Libraries",
-            command=self.fetch_jellyfin_libraries,
+        self.jellyfin_url_entry = ttk.Entry(
+            url_frame,
+            width=62,
+            textvariable=self.jellyfin_web_url_var,
         )
-        libraries_button.pack(side="left", padx=(12, 0))
-        self.media_action_buttons.append(libraries_button)
+        self.jellyfin_url_entry.grid(row=1, column=0, sticky="ew", pady=(4, 0))
 
-        recent_button = ttk.Button(
-            actions,
-            text="Recent Media",
-            command=self.fetch_jellyfin_recent_media,
+        buttons = ttk.Frame(url_frame)
+        buttons.grid(row=1, column=1, sticky="e", padx=(12, 0))
+
+        ttk.Button(buttons, text="Copy", command=self._copy_jellyfin_web_url).pack(side="left")
+        ttk.Button(buttons, text="Refresh Status", command=self._refresh_jellyfin_web_status).pack(
+            side="left", padx=(12, 0)
         )
-        recent_button.pack(side="left", padx=(12, 0))
-        self.media_action_buttons.append(recent_button)
 
-        clear_button = ttk.Button(actions, text="Clear Output", command=self.clear_media_output)
-        clear_button.pack(side="right")
+    def _get_jellyfin_web_url(self) -> str:
+        """Return the trimmed Jellyfin portal URL."""
 
-        status_bar = ttk.Frame(parent)
-        status_bar.pack(fill="x", padx=24, pady=(6, 6))
-        self.media_status_label = ttk.Label(status_bar, textvariable=self.media_status_var)
-        self.media_status_label.pack(side="left")
+        return self.jellyfin_web_url_var.get().strip()
 
-        output_frame = ttk.Frame(parent)
-        output_frame.pack(fill="both", expand=True, padx=24, pady=(6, 24))
+    def _require_jellyfin_web_url(self) -> str | None:
+        """Validate the Jellyfin web URL field and return it when usable."""
 
-        self.media_output = tk.Text(
-            output_frame,
+        url = self._get_jellyfin_web_url()
+        if not url:
+            self.jellyfin_web_status_var.set("Enter the Jellyfin portal address before continuing.")
+            messagebox.showerror(
+                "Jellyfin Web",
+                "Enter the Jellyfin web portal URL you want to use before continuing.",
+            )
+            return None
+
+        if not url.startswith(("http://", "https://")):
+            self.jellyfin_web_status_var.set("Provide a full http(s) Jellyfin web address.")
+            messagebox.showerror(
+                "Jellyfin Web",
+                "Provide a full http:// or https:// address for the Jellyfin web portal.",
+            )
+            return None
+
+        return url
+
+    def _build_roasting_chat_tab(self, parent: ttk.Frame) -> None:
+        """Create the roasting chatbot interface with persona switching."""
+
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+
+        layout = ttk.Frame(parent)
+        layout.grid(row=0, column=0, sticky="nsew", padx=24, pady=24)
+        layout.columnconfigure(0, weight=3)
+        layout.columnconfigure(1, weight=2)
+        layout.rowconfigure(0, weight=1)
+
+        conversation = ttk.Frame(layout)
+        conversation.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        conversation.columnconfigure(0, weight=1)
+        conversation.rowconfigure(1, weight=1)
+
+        status_bar = ttk.Frame(conversation)
+        status_bar.grid(row=0, column=0, sticky="ew")
+        status_bar.columnconfigure(0, weight=1)
+
+        self.roasting_status_label = ttk.Label(status_bar, textvariable=self.roasting_status_var)
+        self.roasting_status_label.grid(row=0, column=0, sticky="w")
+
+        self.roasting_clear_button = ttk.Button(
+            status_bar,
+            text="Clear Persona History",
+            command=self.clear_roasting_conversation,
+        )
+        self.roasting_clear_button.grid(row=0, column=1, sticky="e")
+
+        transcript = ttk.Frame(conversation)
+        transcript.grid(row=1, column=0, sticky="nsew", pady=(12, 12))
+        transcript.columnconfigure(0, weight=1)
+        transcript.rowconfigure(0, weight=1)
+
+        self.roasting_display = tk.Text(
+            transcript,
             wrap="word",
             state="disabled",
             height=18,
             relief="flat",
             bd=0,
         )
-        self._text_widgets.append(self.media_output)
-
-        media_scrollbar = ttk.Scrollbar(output_frame, orient="vertical", command=self.media_output.yview)
-        self.media_output.configure(yscrollcommand=media_scrollbar.set)
-
-        self.media_output.pack(side="left", fill="both", expand=True)
-        media_scrollbar.pack(side="right", fill="y")
-
-        self._append_media_output("Awaiting Jellyfin requests.")
-
-    def _build_roasting_chat_tab(self, parent: ttk.Frame) -> None:
-        """Create the roasting chatbot interface with persona switching."""
-
-        config = ttk.LabelFrame(parent, text="OpenRouter Configuration")
-        config.pack(fill="x", padx=24, pady=(24, 12))
-        config.columnconfigure(1, weight=1)
-
-        ttk.Label(config, text="API Key:").grid(row=0, column=0, sticky="w")
-        self.roasting_api_key_entry = ttk.Entry(
-            config,
-            textvariable=self.api_key_var,
-            show="*",
-            width=52,
-        )
-        self.roasting_api_key_entry.grid(row=0, column=1, sticky="ew")
-
-        self.roasting_api_key_apply_button = ttk.Button(
-            config,
-            text="Apply Key",
-            command=self.apply_api_key,
-        )
-        self.roasting_api_key_apply_button.grid(row=0, column=2, padx=(12, 0))
-
-        ttk.Label(
-            config,
-            text=(
-                "Roasting Chamber shares the OpenRouter key with General Chat. "
-                "Choose a model before requesting online roasts."
-            ),
-            wraplength=520,
-        ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 0))
-
-        ttk.Label(config, text="Model:").grid(row=2, column=0, sticky="w", pady=(12, 0))
-        self.roasting_model_combo = ttk.Combobox(
-            config,
-            textvariable=self.roasting_model_var,
-            values=GENERAL_CHAT_MODELS,
-            state="readonly",
-        )
-        self.roasting_model_combo.grid(row=2, column=1, sticky="ew", pady=(12, 0))
-
-        ttk.Label(
-            config,
-            text="Models are drawn from the shared OpenRouter catalog.",
-            wraplength=320,
-        ).grid(row=2, column=2, sticky="w", padx=(12, 0), pady=(12, 0))
-
-        controls = ttk.Frame(parent)
-        controls.pack(fill="x", padx=24, pady=(0, 12))
-
-        ttk.Label(controls, text="Persona:").pack(side="left")
-        persona_menu = ttk.OptionMenu(
-            controls,
-            self.roasting_voice_var,
-            self.roasting_voice_var.get(),
-            *ROASTING_PERSONAS.keys(),
-            command=lambda *_: self._load_roasting_history(self.roasting_voice_var.get()),
-        )
-        persona_menu.pack(side="left", padx=(6, 12))
-
-        context = ttk.Frame(parent)
-        context.pack(fill="x", padx=24, pady=(0, 12))
-
-        ttk.Label(context, text="Game:").pack(side="left")
-        self.roasting_game_combo = ttk.Combobox(
-            context,
-            textvariable=self.roasting_game_var,
-            values=[""],
-            width=40,
-            state="readonly",
-        )
-        self.roasting_game_combo.pack(side="left", padx=(6, 12))
-
-        clear_game_button = ttk.Button(
-            context,
-            text="Clear Game",
-            command=lambda: self.roasting_game_var.set(""),
-        )
-        clear_game_button.pack(side="left")
-
-        os_check = ttk.Checkbutton(
-            context,
-            text="Include operating system context",
-            variable=self.include_os_var,
-        )
-        os_check.pack(side="left", padx=(18, 0))
-
-        self.roasting_clear_button = ttk.Button(
-            controls,
-            text="Clear Persona History",
-            command=self.clear_roasting_conversation,
-        )
-        self.roasting_clear_button.pack(side="right")
-
-        status_bar = ttk.Frame(parent)
-        status_bar.pack(fill="x", padx=24, pady=(6, 6))
-        self.roasting_status_label = ttk.Label(status_bar, textvariable=self.roasting_status_var)
-        self.roasting_status_label.pack(side="left")
-
-        chat_frame = ttk.Frame(parent)
-        chat_frame.pack(fill="both", expand=True, padx=24, pady=(6, 6))
-
-        self.roasting_display = tk.Text(
-            chat_frame,
-            wrap="word",
-            state="disabled",
-            height=16,
-            relief="flat",
-            bd=0,
-        )
         self._text_widgets.append(self.roasting_display)
+        self.roasting_display.grid(row=0, column=0, sticky="nsew")
 
-        roast_scrollbar = ttk.Scrollbar(chat_frame, orient="vertical", command=self.roasting_display.yview)
+        roast_scrollbar = ttk.Scrollbar(transcript, orient="vertical", command=self.roasting_display.yview)
+        roast_scrollbar.grid(row=0, column=1, sticky="ns")
         self.roasting_display.configure(yscrollcommand=roast_scrollbar.set)
 
-        self.roasting_display.pack(side="left", fill="both", expand=True)
-        roast_scrollbar.pack(side="right", fill="y")
-
-        input_frame = ttk.Frame(parent)
-        input_frame.pack(fill="x", padx=24, pady=(6, 24))
+        input_frame = ttk.Frame(conversation)
+        input_frame.grid(row=2, column=0, sticky="ew")
+        input_frame.columnconfigure(0, weight=1)
 
         self.roasting_input = tk.Text(input_frame, wrap="word", height=4)
-        self.roasting_input.pack(side="left", fill="both", expand=True)
+        self.roasting_input.grid(row=0, column=0, sticky="ew")
         self._text_widgets.append(self.roasting_input)
 
         self.roasting_send_button = ttk.Button(
@@ -524,15 +508,257 @@ class ApertureLauncherGUI(tk.Tk):
             text="Roast",
             command=self.send_roasting_message,
         )
-        self.roasting_send_button.pack(side="left", padx=(12, 0))
+        self.roasting_send_button.grid(row=0, column=1, padx=(12, 0))
+
+        sidebar = ttk.LabelFrame(layout, text="Roasting Controls")
+        sidebar.grid(row=0, column=1, sticky="nsew")
+        sidebar.columnconfigure(1, weight=1)
+
+        row = 0
+        ttk.Label(sidebar, text="API Key:").grid(row=row, column=0, sticky="w")
+        self.roasting_api_key_entry = ttk.Entry(sidebar, textvariable=self.api_key_var, show="*", width=28)
+        self.roasting_api_key_entry.grid(row=row, column=1, sticky="ew")
+        self.roasting_api_key_apply_button = ttk.Button(
+            sidebar,
+            text="Apply Key",
+            command=self.apply_api_key,
+        )
+        self.roasting_api_key_apply_button.grid(row=row, column=2, padx=(12, 0))
+        row += 1
+
+        ttk.Label(
+            sidebar,
+            text=(
+                "Roasting Chamber shares the OpenRouter configuration with General Chat. "
+                "Validate your key, then choose a model, persona, and optional game context."
+            ),
+            wraplength=320,
+        ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(6, 12))
+        row += 1
+
+        ttk.Label(sidebar, text="Model:").grid(row=row, column=0, sticky="w")
+        self.roasting_model_combo = ttk.Combobox(
+            sidebar,
+            textvariable=self.roasting_model_var,
+            values=GENERAL_CHAT_MODELS,
+            state="readonly",
+        )
+        self.roasting_model_combo.grid(row=row, column=1, columnspan=2, sticky="ew")
+        row += 1
+
+        ttk.Label(sidebar, text="Persona:").grid(row=row, column=0, sticky="w", pady=(8, 0))
+        persona_menu = ttk.OptionMenu(
+            sidebar,
+            self.roasting_voice_var,
+            self.roasting_voice_var.get(),
+            *ROASTING_PERSONAS.keys(),
+            command=lambda *_: self._load_roasting_history(self.roasting_voice_var.get()),
+        )
+        persona_menu.grid(row=row, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+        row += 1
+
+        ttk.Label(sidebar, text="Game Context:").grid(row=row, column=0, sticky="w", pady=(8, 0))
+        game_row = ttk.Frame(sidebar)
+        game_row.grid(row=row, column=1, columnspan=2, sticky="ew", pady=(8, 0))
+        game_row.columnconfigure(0, weight=1)
+
+        self.roasting_game_combo = ttk.Combobox(
+            game_row,
+            textvariable=self.roasting_game_var,
+            values=[""],
+            state="readonly",
+        )
+        self.roasting_game_combo.grid(row=0, column=0, sticky="ew")
+
+        ttk.Button(
+            game_row,
+            text="Clear",
+            command=lambda: self.roasting_game_var.set(""),
+        ).grid(row=0, column=1, padx=(12, 0))
+        row += 1
+
+        ttk.Checkbutton(
+            sidebar,
+            text="Include operating system context",
+            variable=self.include_os_var,
+        ).grid(row=row, column=0, columnspan=3, sticky="w")
+        row += 1
+
+        sidebar.rowconfigure(row, weight=1)
 
         self._load_roasting_history(self.roasting_voice_var.get())
         self._refresh_roasting_games()
+
+    def _open_jellyfin_in_browser(self) -> None:
+        """Launch the Jellyfin portal in the default system browser."""
+
+        url = self._require_jellyfin_web_url()
+        if url is None:
+            return
+
+        try:
+            if not webbrowser.open(url, new=2, autoraise=True):
+                raise RuntimeError("The web browser reported it could not open the URL.")
+        except Exception as exc:
+            self.jellyfin_web_status_var.set("Failed to launch browser for the Jellyfin portal.")
+            messagebox.showerror("Jellyfin Web", f"Unable to open the Jellyfin portal:\n\n{exc}")
+            return
+
+        self.jellyfin_web_status_var.set("Opened the Jellyfin portal in your default browser.")
+
+    def _launch_embedded_jellyfin(self) -> None:
+        """Launch the Jellyfin portal inside a pywebview window if available."""
+
+        url = self._require_jellyfin_web_url()
+        if url is None:
+            return
+
+        if webview is None:
+            messagebox.showinfo(
+                "Jellyfin Web",
+                "Install the 'pywebview' package to enable the embedded browser.\n\n"
+                "Opening the Jellyfin portal in your web browser instead.",
+            )
+            self._open_jellyfin_in_browser()
+            return
+
+        if self._jellyfin_webview_process and self._jellyfin_webview_process.is_alive():
+            self.jellyfin_web_status_var.set("Embedded Jellyfin portal already running.")
+            return
+
+        status_queue: mp.Queue = mp.Queue()
+        process = mp.Process(
+            target=_run_jellyfin_webview,
+            args=(url, 1200, 720, status_queue),
+            daemon=True,
+        )
+
+        try:
+            process.start()
+        except Exception as exc:  # pragma: no cover - platform dependent
+            status_queue.close()
+            self._handle_webview_failure(exc)
+            return
+
+        self._jellyfin_webview_queue = status_queue
+        self._jellyfin_webview_process = process
+        self.jellyfin_web_status_var.set("Launching embedded Jellyfin portal...")
+        self.after(200, self._poll_jellyfin_webview_status)
+
+    def _poll_jellyfin_webview_status(self) -> None:
+        """Monitor the background pywebview process and reflect its state in the UI."""
+
+        process = self._jellyfin_webview_process
+        status_queue = self._jellyfin_webview_queue
+        if process is None or status_queue is None:
+            return
+
+        try:
+            while True:
+                state, message = status_queue.get_nowait()
+                if state == "started":
+                    self.jellyfin_web_status_var.set(message)
+                elif state == "closed":
+                    self._clear_jellyfin_webview_state(closed=True)
+                    return
+                elif state == "error":
+                    self._handle_webview_failure(RuntimeError(message))
+                    self._clear_jellyfin_webview_state(closed=False)
+                    return
+        except queue.Empty:
+            pass
+
+        if process.is_alive():
+            self.after(250, self._poll_jellyfin_webview_status)
+            return
+
+        exit_code = process.exitcode
+        if exit_code == 0:
+            self._clear_jellyfin_webview_state(closed=True)
+        else:
+            self._handle_webview_failure(
+                RuntimeError("Embedded Jellyfin portal exited unexpectedly.")
+            )
+            self._clear_jellyfin_webview_state(closed=False)
+
+    def _handle_webview_failure(self, exc: Exception) -> None:
+        """Handle failures when starting the embedded Jellyfin window."""
+
+        self.jellyfin_web_status_var.set("Failed to launch the embedded Jellyfin portal.")
+        messagebox.showerror(
+            "Jellyfin Web",
+            "Unable to start the embedded Jellyfin portal window.\n\n"
+            f"{exc}",
+        )
+
+    def _clear_jellyfin_webview_state(self, *, closed: bool) -> None:
+        """Reset embedded Jellyfin window bookkeeping."""
+
+        process = self._jellyfin_webview_process
+        status_queue = self._jellyfin_webview_queue
+
+        self._jellyfin_webview_process = None
+        self._jellyfin_webview_queue = None
+
+        if status_queue is not None:
+            try:
+                status_queue.close()
+            except Exception:
+                pass
+            try:
+                status_queue.cancel_join_thread()
+            except Exception:
+                pass
+
+        if process is not None:
+            try:
+                if process.is_alive():
+                    process.terminate()
+                process.join(timeout=0.5)
+            except Exception:
+                pass
+
+        if closed:
+            self.jellyfin_web_status_var.set(
+                "Embedded Jellyfin portal closed. Launch again or open it in your browser."
+            )
+
+    def _copy_jellyfin_web_url(self) -> None:
+        """Copy the Jellyfin portal URL to the clipboard."""
+
+        url = self._get_jellyfin_web_url()
+        if not url:
+            self.jellyfin_web_status_var.set("Enter the Jellyfin portal address before copying.")
+            messagebox.showerror(
+                "Jellyfin Web",
+                "Enter a Jellyfin web portal URL before copying it to the clipboard.",
+            )
+            return
+
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(url)
+        except Exception as exc:  # pragma: no cover - platform dependent
+            self.jellyfin_web_status_var.set("Copy failed. Use the browser button instead.")
+            messagebox.showerror("Jellyfin Web", f"Unable to copy the URL:\n\n{exc}")
+            return
+
+        self.jellyfin_web_status_var.set("Copied Jellyfin portal address to the clipboard.")
+
+    def _refresh_jellyfin_web_status(self) -> None:
+        """Reset the status text for the Jellyfin web tab."""
+
+        self.jellyfin_web_status_var.set(
+            "Enter your Jellyfin portal URL, then launch it here or in your browser."
+            if webview
+            else "Enter your Jellyfin portal URL and open it in your browser. Install pywebview for an embedded view."
+        )
 
     def _apply_theme(self) -> None:
         """Update widget colors based on the selected theme."""
 
         palette = THEME_PALETTES[self.theme_var.get()]
+        selected_tab_text = palette.get("text_on_accent", palette["text"])
 
         self.configure(bg=palette["background"])
 
@@ -545,16 +771,25 @@ class ApertureLauncherGUI(tk.Tk):
             "TNotebook",
             background=palette["background"],
             borderwidth=0,
+            tabmargins=(12, 6, 12, 0),
         )
         style.configure(
             "TNotebook.Tab",
             background=palette["surface"],
             foreground=palette["text"],
+            padding=(16, 8),
+            borderwidth=0,
         )
         style.map(
             "TNotebook.Tab",
-            background=[("selected", palette["surface_highlight"])],
-            foreground=[("selected", palette["text"])],
+            background=[
+                ("selected", palette["accent"]),
+                ("active", palette["surface_highlight"]),
+            ],
+            foreground=[
+                ("selected", selected_tab_text),
+                ("active", palette["text"]),
+            ],
         )
         style.configure(
             "Treeview",
@@ -665,28 +900,6 @@ class ApertureLauncherGUI(tk.Tk):
         if message:
             self._append_chat_message(widget, speaker, message)
 
-    def _append_media_output(self, message: str) -> None:
-        """Append a plain text line to the media server output area."""
-
-        if not hasattr(self, "media_output"):
-            return
-
-        widget = self.media_output
-        state = widget.cget("state")
-        if state == "disabled":
-            widget.configure(state="normal")
-        widget.insert(tk.END, f"{message.rstrip()}\n")
-        if state == "disabled":
-            widget.configure(state="disabled")
-        widget.see(tk.END)
-
-    def clear_media_output(self) -> None:
-        """Clear the media server transcript."""
-
-        if hasattr(self, "media_output"):
-            self._clear_text_widget(self.media_output)
-        self._append_media_output("Output cleared.")
-
     def _set_general_busy(self, busy: bool, status: str | None = None) -> None:
         """Enable or disable general chat controls."""
 
@@ -706,194 +919,6 @@ class ApertureLauncherGUI(tk.Tk):
                 else f"{persona} ready for your next prompt."
             )
         self.general_status_var.set(status)
-
-    def _set_jellyfin_busy(self, busy: bool, status: str | None = None) -> None:
-        """Enable or disable Jellyfin controls and update status text."""
-
-        self.jellyfin_busy = busy
-        state = "disabled" if busy else "normal"
-        for button in self.media_action_buttons:
-            button.configure(state=state)
-
-        if status is not None:
-            self.media_status_var.set(status)
-        elif not busy:
-            self.media_status_var.set("Media server idle.")
-
-    def _start_jellyfin_task(
-        self,
-        description: str,
-        worker: Callable[[], tuple[str, Sequence[str]]],
-        *,
-        pre_message: str | None = None,
-        clear_output: bool = False,
-    ) -> None:
-        """Run a Jellyfin request in the background."""
-
-        if self.jellyfin_busy:
-            messagebox.showinfo(
-                "Media Server", "A Jellyfin request is already in progress. Please wait."
-            )
-            return
-
-        if clear_output and hasattr(self, "media_output"):
-            self._clear_text_widget(self.media_output)
-        if pre_message:
-            self._append_media_output(pre_message)
-
-        self._set_jellyfin_busy(True, description)
-
-        def run() -> None:
-            try:
-                status, lines = worker()
-            except Exception as exc:  # pragma: no cover - network dependent
-                self.after(0, lambda exc=exc: self._complete_jellyfin_task(error=exc))
-                return
-            self.after(
-                0,
-                lambda status=status, lines=list(lines): self._complete_jellyfin_task(
-                    status=status, lines=lines
-                ),
-            )
-
-        threading.Thread(target=run, daemon=True).start()
-
-    def _complete_jellyfin_task(
-        self,
-        *,
-        status: str | None = None,
-        lines: Sequence[str] | None = None,
-        error: Exception | None = None,
-    ) -> None:
-        """Finalize a Jellyfin request on the main thread."""
-
-        if error:
-            self._append_media_output(f"Error: {error}")
-            self._set_jellyfin_busy(False, "Media server request failed.")
-            messagebox.showerror("Media Server", f"Jellyfin request failed:\n\n{error}")
-            return
-
-        if lines:
-            for line in lines:
-                self._append_media_output(line)
-
-        final_status = status or "Media server request complete."
-        self._set_jellyfin_busy(False, final_status)
-
-    def _sanitize_jellyfin_inputs(self) -> tuple[str, str, str]:
-        """Return trimmed Jellyfin credentials."""
-
-        base_url = self.jellyfin_server_var.get().strip()
-        api_key = self.jellyfin_api_key_var.get().strip()
-        user_id = self.jellyfin_user_id_var.get().strip()
-        return base_url, api_key, user_id
-
-    def test_jellyfin_connection(self) -> None:
-        """Validate the Jellyfin server connection."""
-
-        base_url, api_key, _ = self._sanitize_jellyfin_inputs()
-        if not base_url:
-            messagebox.showerror("Media Server", "Enter the Jellyfin server URL before testing.")
-            return
-
-        def worker() -> tuple[str, Sequence[str]]:
-            info = fetch_system_info(base_url, api_key=api_key or None)
-            server_name = info.get("ServerName") or info.get("ProductName") or "Jellyfin"
-            version = info.get("Version") or "Unknown version"
-            os_name = info.get("OperatingSystem") or "Unknown operating system"
-            startup = "Yes" if info.get("StartupWizardCompleted") else "No"
-            lines = [
-                f"Server Name: {server_name}",
-                f"Version: {version}",
-                f"Operating System: {os_name}",
-                f"Server ID: {info.get('Id', 'n/a')}",
-                f"Startup wizard completed: {startup}",
-            ]
-            return (f"Connected to {server_name}.", lines)
-
-        self._start_jellyfin_task(
-            "Testing Jellyfin connection...",
-            worker,
-            pre_message="Testing Jellyfin connection...",
-        )
-
-    def fetch_jellyfin_libraries(self) -> None:
-        """Fetch libraries available to the configured Jellyfin user."""
-
-        base_url, api_key, user_id = self._sanitize_jellyfin_inputs()
-        if not base_url or not api_key or not user_id:
-            messagebox.showerror(
-                "Media Server",
-                "Provide the Jellyfin server URL, API key, and user ID before fetching libraries.",
-            )
-            return
-
-        def worker() -> tuple[str, Sequence[str]]:
-            views = fetch_user_views(base_url, api_key=api_key, user_id=user_id)
-            if not views:
-                return ("No libraries returned.", ["No libraries were found for this user."])
-
-            lines = ["Discovered libraries:"]
-            for view in views:
-                name = view.get("Name") or "Unnamed library"
-                collection = view.get("CollectionType") or view.get("MediaType") or "Unknown type"
-                view_id = view.get("Id", "n/a")
-                lines.append(f"- {name} ({collection}) • Id: {view_id}")
-
-            return (f"Found {len(views)} libraries.", lines)
-
-        self._start_jellyfin_task(
-            "Fetching Jellyfin libraries...",
-            worker,
-            pre_message="Requesting libraries from Jellyfin...",
-            clear_output=True,
-        )
-
-    def fetch_jellyfin_recent_media(self) -> None:
-        """Retrieve recently added media items."""
-
-        base_url, api_key, user_id = self._sanitize_jellyfin_inputs()
-        if not base_url or not api_key or not user_id:
-            messagebox.showerror(
-                "Media Server",
-                "Provide the Jellyfin server URL, API key, and user ID before requesting recent media.",
-            )
-            return
-
-        def worker() -> tuple[str, Sequence[str]]:
-            items = fetch_recent_media(base_url, api_key=api_key, user_id=user_id)
-            if not items:
-                return ("No recent media reported.", ["No recent media items were returned."])
-
-            lines = ["Recently added media:"]
-            for item in items:
-                name = item.get("Name") or "Unnamed item"
-                media_type = item.get("Type") or item.get("MediaType") or "Unknown category"
-                series = item.get("SeriesName")
-                episode = item.get("IndexNumber")
-                season = item.get("ParentIndexNumber")
-                created = item.get("DateCreated")
-                created_display = (
-                    created.replace("T", " ")[:19] if isinstance(created, str) else "Unknown date"
-                )
-
-                detail_parts = [media_type]
-                if series:
-                    detail_parts.append(series)
-                if season is not None and episode is not None:
-                    detail_parts.append(f"S{season}E{episode}")
-
-                detail = " • ".join(str(part) for part in detail_parts if part)
-                lines.append(f"- {name} ({detail}) • Added: {created_display}")
-
-            return (f"Retrieved {len(items)} media items.", lines)
-
-        self._start_jellyfin_task(
-            "Fetching recently added media...",
-            worker,
-            pre_message="Requesting recently added media...",
-            clear_output=True,
-        )
 
     def _invalidate_api_key(self, *_: object) -> None:
         """Mark the cached OpenRouter key as invalid when it changes."""
